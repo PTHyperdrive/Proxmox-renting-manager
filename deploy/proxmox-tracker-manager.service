@@ -4,9 +4,12 @@ After=network.target mysql.service
 
 [Service]
 Type=simple
-User=www-data
+User=root
 WorkingDirectory=/opt/proxmox-tracker
-ExecStart=/usr/bin/python3 -m uvicorn manager.main:app --host 0.0.0.0 --port 8000
+
+# Use the Python from venv - update this path if different
+ExecStart=/opt/proxmox-tracker/venv/bin/python -m uvicorn manager.main:app --host 0.0.0.0 --port 8000
+
 Restart=always
 RestartSec=10
 
