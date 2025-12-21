@@ -271,3 +271,106 @@ class RentalManager:
             rental_id,
             RentalUpdate(rental_start=new_start)
         )
+    
+    async def get_customer_summary(self) -> dict:
+        """
+        Get summary of all customers with billing totals.
+        
+        Groups rentals by customer_name and calculates:
+        - Total VMs
+        - Total runtime
+        - Total cost
+        """
+        from sqlalchemy import func
+        
+        async with get_db_context() as db:
+            # Get all active rentals grouped by customer
+            result = await db.execute(
+                select(Rental).where(Rental.is_active == True).order_by(Rental.customer_name)
+            )
+            rentals = list(result.scalars().all())
+        
+        # Group and calculate
+        customers = {}
+        
+        for rental in rentals:
+            customer_key = rental.customer_name or "Unknown"
+            
+            if customer_key not in customers:
+                customers[customer_key] = {
+                    "customer_name": rental.customer_name,
+                    "customer_email": rental.customer_email,
+                    "total_vms": 0,
+                    "total_runtime_seconds": 0,
+                    "total_cost": 0.0,
+                    "rentals": []
+                }
+            
+            # Get usage for this rental
+            usage = await self.time_tracker.get_vm_usage(
+                rental.vm_id,
+                start_date=rental.rental_start,
+                end_date=rental.rental_end or datetime.utcnow(),
+                node=rental.node
+            )
+            
+            # Calculate cost
+            rental_cost = 0.0
+            if rental.rate_per_hour:
+                rental_cost = usage.total_hours * rental.rate_per_hour
+            
+            # Update customer totals
+            customers[customer_key]["total_vms"] += 1
+            customers[customer_key]["total_runtime_seconds"] += usage.total_seconds
+            customers[customer_key]["total_cost"] += rental_cost
+            
+            # Update email if not set
+            if rental.customer_email and not customers[customer_key]["customer_email"]:
+                customers[customer_key]["customer_email"] = rental.customer_email
+            
+            # Add rental details
+            customers[customer_key]["rentals"].append({
+                "rental_id": rental.id,
+                "vm_id": rental.vm_id,
+                "node": rental.node,
+                "runtime_seconds": usage.total_seconds,
+                "runtime_formatted": usage.formatted_duration,
+                "rate_per_hour": rental.rate_per_hour,
+                "cost": rental_cost,
+                "rental_start": rental.rental_start.isoformat() if rental.rental_start else None,
+                "rental_end": rental.rental_end.isoformat() if rental.rental_end else None
+            })
+        
+        # Format totals for each customer
+        customer_list = []
+        for key, data in sorted(customers.items()):
+            total_hours = data["total_runtime_seconds"] // 3600
+            total_minutes = (data["total_runtime_seconds"] % 3600) // 60
+            
+            customer_list.append({
+                "customer_name": data["customer_name"],
+                "customer_email": data["customer_email"],
+                "total_vms": data["total_vms"],
+                "total_runtime_seconds": data["total_runtime_seconds"],
+                "total_runtime_formatted": f"{total_hours}h {total_minutes}m",
+                "total_cost": round(data["total_cost"], 2),
+                "rentals": data["rentals"]
+            })
+        
+        # Calculate grand totals
+        grand_totals = {
+            "total_customers": len(customer_list),
+            "total_vms": sum(c["total_vms"] for c in customer_list),
+            "total_runtime_seconds": sum(c["total_runtime_seconds"] for c in customer_list),
+            "total_cost": round(sum(c["total_cost"] for c in customer_list), 2)
+        }
+        
+        total_hours = grand_totals["total_runtime_seconds"] // 3600
+        total_minutes = (grand_totals["total_runtime_seconds"] % 3600) // 60
+        grand_totals["total_runtime_formatted"] = f"{total_hours}h {total_minutes}m"
+        
+        return {
+            "customers": customer_list,
+            "totals": grand_totals
+        }
+

@@ -474,6 +474,11 @@ def get_dashboard_html() -> str:
                     <i class="bi bi-calendar-check me-1"></i> Rentals
                 </button>
             </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#customersTab">
+                    <i class="bi bi-people me-1"></i> Customers
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content">
@@ -568,6 +573,68 @@ def get_dashboard_html() -> str:
                                 <tbody id="rentalsTableBody">
                                     <tr>
                                         <td colspan="7" class="text-center py-4 text-muted">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Customers Tab -->
+            <div class="tab-pane fade" id="customersTab">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-people me-2"></i>Customer Billing Summary</span>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="loadCustomers()">
+                            <i class="bi bi-arrow-repeat"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <!-- Summary Cards -->
+                        <div class="row g-3 mb-4" id="customerSummaryCards">
+                            <div class="col-md-3">
+                                <div class="stat-card">
+                                    <div class="stat-value" id="totalCustomers">--</div>
+                                    <div class="stat-label">Total Customers</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card">
+                                    <div class="stat-value" id="totalRentedVMs">--</div>
+                                    <div class="stat-label">Rented VMs</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card">
+                                    <div class="stat-value" id="totalBilledRuntime">--</div>
+                                    <div class="stat-label">Total Billed Runtime</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                                    <div class="stat-value" id="totalRevenue">$--</div>
+                                    <div class="stat-label">Total Revenue</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Customer Table -->
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Customer</th>
+                                        <th>Email</th>
+                                        <th>VMs</th>
+                                        <th>Total Runtime</th>
+                                        <th>Total Cost</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="customersTableBody">
+                                    <tr>
+                                        <td colspan="6" class="text-center py-4 text-muted">Loading...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -800,7 +867,7 @@ def get_dashboard_html() -> str:
             
             tbody.innerHTML = vmsData.map(vm => `
                 <tr>
-                    <td><strong>VM ${vm.vm_id}</strong></td>
+                    <td><strong>VM ${vm.vm_id}</strong>${vm.name ? `<br><small class="text-muted">${vm.name}</small>` : ''}</td>
                     <td>${vm.node}</td>
                     <td>
                         <span class="badge ${vm.status === 'running' ? 'badge-running' : 'badge-stopped'}">
@@ -810,12 +877,38 @@ def get_dashboard_html() -> str:
                     </td>
                     <td class="duration-display">${vm.formatted_runtime}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="viewVmUsage('${vm.vm_id}')">
-                            <i class="bi bi-graph-up"></i> Usage
+                        <button class="btn btn-sm btn-outline-secondary me-1" onclick="viewVmUsage('${vm.vm_id}')">
+                            <i class="bi bi-graph-up"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeVM('${vm.vm_id}', '${vm.node}')" title="Remove from tracking">
+                            <i class="bi bi-trash"></i>
                         </button>
                     </td>
                 </tr>
             `).join('');
+        }
+        
+        async function removeVM(vmId, node) {
+            if (!confirm(`Remove VM ${vmId} from tracking?\n\nThis will stop tracking this VM. Session history will be kept.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/vms/${vmId}?node=${node}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    await loadVMs();
+                    updateStats();
+                } else {
+                    const error = await response.json();
+                    alert('Failed to remove VM: ' + (error.detail || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Failed to remove VM:', err);
+                alert('Failed to remove VM');
+            }
         }
         
         async function loadSessions() {
@@ -1168,6 +1261,131 @@ def get_dashboard_html() -> str:
             if (h > 0) return `${h}h ${m}m`;
             return `${m}m`;
         }
+        
+        // Customer functions
+        let customersData = { customers: [], totals: {} };
+        
+        async function loadCustomers() {
+            try {
+                const response = await fetch(`${API_BASE}/api/rentals/customers/summary`);
+                if (response.ok) {
+                    customersData = await response.json();
+                    renderCustomers();
+                    updateCustomerSummary();
+                }
+            } catch (err) {
+                console.error('Failed to load customers:', err);
+            }
+        }
+        
+        function renderCustomers() {
+            const tbody = document.getElementById('customersTableBody');
+            
+            if (!customersData.customers || customersData.customers.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <i class="bi bi-people"></i>
+                            <p>No customers found</p>
+                            <small class="text-muted">Create rentals with customer information to see billing summaries</small>
+                        </td>
+                    </tr>`;
+                return;
+            }
+            
+            tbody.innerHTML = customersData.customers.map(customer => `
+                <tr>
+                    <td><strong>${customer.customer_name || 'Unknown'}</strong></td>
+                    <td>${customer.customer_email || '-'}</td>
+                    <td><span class="badge bg-primary">${customer.total_vms} VMs</span></td>
+                    <td class="duration-display">${customer.total_runtime_formatted}</td>
+                    <td><strong class="text-success">$${customer.total_cost.toFixed(2)}</strong></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="viewCustomerDetails('${customer.customer_name}')">
+                            <i class="bi bi-eye"></i> Details
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        function updateCustomerSummary() {
+            const totals = customersData.totals || {};
+            document.getElementById('totalCustomers').textContent = totals.total_customers || 0;
+            document.getElementById('totalRentedVMs').textContent = totals.total_vms || 0;
+            document.getElementById('totalBilledRuntime').textContent = totals.total_runtime_formatted || '0h';
+            document.getElementById('totalRevenue').textContent = '$' + (totals.total_cost || 0).toFixed(2);
+        }
+        
+        function viewCustomerDetails(customerName) {
+            const customer = customersData.customers.find(c => c.customer_name === customerName);
+            if (!customer) return;
+            
+            const modalBody = document.getElementById('usageModalBody');
+            const modal = new bootstrap.Modal(document.getElementById('usageModal'));
+            
+            let rentalsHtml = customer.rentals.map(r => `
+                <tr>
+                    <td>VM ${r.vm_id}</td>
+                    <td>${r.node || '-'}</td>
+                    <td>${r.runtime_formatted}</td>
+                    <td>$${r.rate_per_hour || 0}/hr</td>
+                    <td class="text-success"><strong>$${r.cost.toFixed(2)}</strong></td>
+                </tr>
+            `).join('');
+            
+            modalBody.innerHTML = `
+                <div class="mb-3">
+                    <h5>${customer.customer_name}</h5>
+                    <p class="text-muted mb-1">${customer.customer_email || 'No email'}</p>
+                </div>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="h4 mb-0">${customer.total_vms}</div>
+                            <small class="text-muted">VMs</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="h4 mb-0">${customer.total_runtime_formatted}</div>
+                            <small class="text-muted">Total Runtime</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-success text-white rounded text-center">
+                            <div class="h4 mb-0">$${customer.total_cost.toFixed(2)}</div>
+                            <small>Total Cost</small>
+                        </div>
+                    </div>
+                </div>
+                <h6>VM Rentals</h6>
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>VM</th>
+                            <th>Node</th>
+                            <th>Runtime</th>
+                            <th>Rate</th>
+                            <th>Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rentalsHtml}</tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <th colspan="4">Total</th>
+                            <th class="text-success">$${customer.total_cost.toFixed(2)}</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            `;
+            
+            document.querySelector('#usageModal .modal-title').textContent = 'Customer Details';
+            modal.show();
+        }
+        
+        // Load customers when tab is clicked
+        document.querySelector('button[data-bs-target="#customersTab"]')?.addEventListener('shown.bs.tab', loadCustomers);
     </script>
     
     <style>

@@ -132,3 +132,22 @@ async def get_active_rental_for_vm(vm_id: str):
         return None
     
     return RentalResponse.model_validate(rental)
+
+
+@router.get("/customers/summary")
+async def get_customer_summary():
+    """
+    Get summary of all customers with their billing totals.
+    
+    Returns:
+        List of customers with:
+        - customer_name, customer_email
+        - total_vms: Number of VMs rented
+        - total_runtime_seconds: Total runtime across all VMs
+        - total_runtime_formatted: Human readable total runtime
+        - total_cost: Calculated cost based on rate_per_hour
+        - rentals: List of their rentals with individual stats
+    """
+    summary = await rental_manager.get_customer_summary()
+    return summary
+
