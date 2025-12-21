@@ -114,7 +114,7 @@ async def dashboard():
 def get_dashboard_html() -> str:
     """Generate the dashboard HTML"""
     return '''<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -122,7 +122,8 @@ def get_dashboard_html() -> str:
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-        :root {
+        /* Dark theme (default) */
+        :root, [data-theme="dark"] {
             --bs-body-bg: #0d1117;
             --bs-body-color: #c9d1d9;
             --card-bg: #161b22;
@@ -130,6 +131,32 @@ def get_dashboard_html() -> str:
             --accent-color: #58a6ff;
             --success-color: #3fb950;
             --warning-color: #d29922;
+            --navbar-bg: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
+            --stat-card-bg: linear-gradient(135deg, #1a1f2e 0%, #161b22 100%);
+            --input-bg: #0d1117;
+            --muted-color: #8b949e;
+            --table-hover-bg: rgba(255,255,255,0.05);
+        }
+        
+        /* Light theme */
+        [data-theme="light"] {
+            --bs-body-bg: #f6f8fa;
+            --bs-body-color: #24292f;
+            --card-bg: #ffffff;
+            --border-color: #d0d7de;
+            --accent-color: #0969da;
+            --success-color: #1a7f37;
+            --warning-color: #9a6700;
+            --navbar-bg: linear-gradient(135deg, #ffffff 0%, #f6f8fa 100%);
+            --stat-card-bg: linear-gradient(135deg, #ffffff 0%, #f6f8fa 100%);
+            --input-bg: #ffffff;
+            --muted-color: #57606a;
+            --table-hover-bg: rgba(0,0,0,0.03);
+        }
+        
+        /* Smooth theme transition */
+        *, *::before, *::after {
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
         }
         
         body {
@@ -139,8 +166,12 @@ def get_dashboard_html() -> str:
         }
         
         .navbar {
-            background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
+            background: var(--navbar-bg);
             border-bottom: 1px solid var(--border-color);
+        }
+        
+        [data-theme="light"] .navbar {
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         
         .card {
@@ -156,16 +187,16 @@ def get_dashboard_html() -> str:
         }
         
         .stat-card {
-            background: linear-gradient(135deg, #1a1f2e 0%, #161b22 100%);
+            background: var(--stat-card-bg);
             border: 1px solid var(--border-color);
             border-radius: 16px;
             padding: 1.5rem;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform 0.2s, box-shadow 0.2s, background-color 0.3s;
         }
         
         .stat-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
         }
         
         .stat-value {
@@ -174,10 +205,11 @@ def get_dashboard_html() -> str:
             background: linear-gradient(135deg, var(--accent-color), #a371f7);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         
         .stat-label {
-            color: #8b949e;
+            color: var(--muted-color);
             font-size: 0.875rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -189,7 +221,7 @@ def get_dashboard_html() -> str:
         
         .table thead th {
             border-color: var(--border-color);
-            color: #8b949e;
+            color: var(--muted-color);
             font-weight: 600;
             text-transform: uppercase;
             font-size: 0.75rem;
@@ -201,6 +233,10 @@ def get_dashboard_html() -> str:
             vertical-align: middle;
         }
         
+        .table-hover tbody tr:hover {
+            background-color: var(--table-hover-bg);
+        }
+        
         .badge-running {
             background: rgba(63, 185, 80, 0.2);
             color: var(--success-color);
@@ -209,8 +245,8 @@ def get_dashboard_html() -> str:
         
         .badge-stopped {
             background: rgba(139, 148, 158, 0.2);
-            color: #8b949e;
-            border: 1px solid #8b949e;
+            color: var(--muted-color);
+            border: 1px solid var(--muted-color);
         }
         
         .btn-primary {
@@ -221,11 +257,12 @@ def get_dashboard_html() -> str:
         }
         
         .btn-primary:hover {
-            background: #79b8ff;
+            background: var(--accent-color);
+            filter: brightness(1.2);
         }
         
         .btn-outline-secondary {
-            color: #8b949e;
+            color: var(--muted-color);
             border-color: var(--border-color);
         }
         
@@ -235,14 +272,14 @@ def get_dashboard_html() -> str:
         }
         
         .form-control, .form-select {
-            background: #0d1117;
+            background: var(--input-bg);
             border: 1px solid var(--border-color);
             color: var(--bs-body-color);
             border-radius: 8px;
         }
         
         .form-control:focus, .form-select:focus {
-            background: #0d1117;
+            background: var(--input-bg);
             border-color: var(--accent-color);
             color: var(--bs-body-color);
             box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
@@ -262,7 +299,7 @@ def get_dashboard_html() -> str:
         }
         
         .nav-tabs .nav-link {
-            color: #8b949e;
+            color: var(--muted-color);
             border: none;
             border-bottom: 2px solid transparent;
             border-radius: 0;
@@ -288,7 +325,7 @@ def get_dashboard_html() -> str:
             font-family: 'SF Mono', 'Consolas', monospace;
             font-size: 0.85rem;
             padding: 0.5rem;
-            background: #0d1117;
+            background: var(--input-bg);
             border-radius: 4px;
             margin-bottom: 0.25rem;
         }
@@ -304,7 +341,7 @@ def get_dashboard_html() -> str:
         .empty-state {
             text-align: center;
             padding: 3rem;
-            color: #8b949e;
+            color: var(--muted-color);
         }
         
         .empty-state i {
@@ -333,11 +370,46 @@ def get_dashboard_html() -> str:
         .running-indicator {
             animation: pulse 2s infinite;
         }
+        
+        /* Theme toggle button */
+        .theme-toggle {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--bs-body-color);
+            transition: all 0.3s ease;
+        }
+        
+        .theme-toggle:hover {
+            background: var(--border-color);
+            transform: rotate(15deg);
+        }
+        
+        .theme-toggle .bi-sun { display: none; }
+        .theme-toggle .bi-moon { display: block; }
+        
+        [data-theme="light"] .theme-toggle .bi-sun { display: block; }
+        [data-theme="light"] .theme-toggle .bi-moon { display: none; }
+        
+        /* Close button fix for light mode */
+        [data-theme="light"] .btn-close {
+            filter: none;
+        }
+        
+        [data-theme="dark"] .btn-close {
+            filter: invert(1) grayscale(100%) brightness(200%);
+        }
     </style>
 </head>
 <body>
     <!-- Navbar -->
-    <nav class="navbar navbar-dark py-3">
+    <nav class="navbar py-3">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center gap-2" href="#">
                 <i class="bi bi-hdd-rack fs-4"></i>
@@ -348,6 +420,10 @@ def get_dashboard_html() -> str:
                     <i class="bi bi-arrow-repeat"></i> Sync from Proxmox
                 </button>
                 <span class="text-muted small" id="lastUpdated">Last updated: --</span>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
+                    <i class="bi bi-moon fs-5"></i>
+                    <i class="bi bi-sun fs-5"></i>
+                </button>
             </div>
         </div>
     </nav>
@@ -591,6 +667,31 @@ def get_dashboard_html() -> str:
         let vmsData = [];
         let sessionsData = [];
         let rentalsData = [];
+        
+        // Theme toggle function
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+        
+        // Load saved theme on page load
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            } else {
+                // Check system preference
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+            }
+        }
+        
+        // Initialize theme immediately
+        initTheme();
         
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
