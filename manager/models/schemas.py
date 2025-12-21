@@ -60,9 +60,86 @@ class HeartbeatRequest(BaseModel):
 
 
 class HeartbeatResponse(BaseModel):
-    """Heartbeat response"""
+    """Heartbeat response with optional force sync flag"""
     success: bool
     server_time: datetime = Field(default_factory=datetime.utcnow)
+    force_sync: bool = False  # If True, client should send full snapshot
+
+
+# ============================================
+# Real-time VM State Schemas
+# ============================================
+
+class VMStartEvent(BaseModel):
+    """Event when a VM starts"""
+    node: str = Field(..., description="Proxmox node name")
+    vm_id: str = Field(..., description="VM ID")
+    vm_name: Optional[str] = Field(None, description="VM name")
+    vm_type: str = Field("qemu", description="VM type: qemu or lxc")
+    start_time: datetime = Field(default_factory=datetime.utcnow)
+
+
+class VMStartResponse(BaseModel):
+    """Response after VM start event"""
+    success: bool
+    message: str
+    session_id: Optional[int] = None
+
+
+class VMStopEvent(BaseModel):
+    """Event when a VM stops"""
+    node: str = Field(..., description="Proxmox node name")
+    vm_id: str = Field(..., description="VM ID")
+    stop_time: datetime = Field(default_factory=datetime.utcnow)
+
+
+class VMStopResponse(BaseModel):
+    """Response after VM stop event"""
+    success: bool
+    message: str
+    session_id: Optional[int] = None
+    duration_seconds: Optional[int] = None
+
+
+class VMStateData(BaseModel):
+    """Current state of a single VM"""
+    vm_id: str
+    vm_type: str = "qemu"
+    name: Optional[str] = None
+    status: str  # running, stopped, paused
+    node: str
+    uptime: int = 0
+    cpu: float = 0.0
+    memory: int = 0
+    maxmem: int = 0
+
+
+class VMStatesSnapshot(BaseModel):
+    """Full snapshot of all VM states from a node"""
+    node: str = Field(..., description="Node sending the snapshot")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    vms: List[VMStateData] = Field(..., description="List of VM states")
+
+
+class VMStatesResponse(BaseModel):
+    """Response after processing VM states snapshot"""
+    success: bool
+    message: str
+    vms_processed: int = 0
+    sessions_started: int = 0
+    sessions_stopped: int = 0
+
+
+class ForceSyncRequest(BaseModel):
+    """Request to trigger force sync on all clients"""
+    target_node: Optional[str] = None  # None = all nodes
+
+
+class ForceSyncResponse(BaseModel):
+    """Response after triggering force sync"""
+    success: bool
+    message: str
+    nodes_notified: int = 0
 
 
 # ============================================

@@ -5,10 +5,22 @@ Loads settings from client_config.yaml for the Proxmox client.
 """
 
 import os
+import socket
 from pathlib import Path
 from typing import List, Optional
 
 import yaml
+
+
+class ProxmoxSettings:
+    """Proxmox API connection settings"""
+    def __init__(self, data: dict):
+        self.host = data.get('host', '127.0.0.1')
+        self.port = data.get('port', 8006)
+        self.user = data.get('user', 'root@pam')
+        self.token_name = data.get('token_name', 'tracker')
+        self.token_value = data.get('token_value', '')
+        self.verify_ssl = data.get('verify_ssl', False)
 
 
 class ManagerSettings:
@@ -19,13 +31,13 @@ class ManagerSettings:
         self.timeout = data.get('timeout', 30)
 
 
-class SyncSettings:
-    """Sync behavior settings"""
+class PollingSettings:
+    """VM state polling settings"""
     def __init__(self, data: dict):
         self.interval_seconds = data.get('interval_seconds', 30)
-        self.batch_size = data.get('batch_size', 100)
-        self.max_retries = data.get('max_retries', 3)
-        self.retry_delay = data.get('retry_delay', 10)
+        self.report_unchanged = data.get('report_unchanged', False)
+        self.track_qemu = data.get('track_qemu', True)
+        self.track_lxc = data.get('track_lxc', True)
 
 
 class LoggingSettings:
@@ -41,10 +53,10 @@ class ClientSettings:
     def __init__(self, config_path: str = 'client_config.yaml'):
         self.node_name = ''
         self.hostname = ''
-        self.log_paths: List[str] = []
         self.state_file = '/var/lib/proxmox-tracker/state.json'
+        self.proxmox = ProxmoxSettings({})
         self.manager = ManagerSettings({})
-        self.sync = SyncSettings({})
+        self.polling = PollingSettings({})
         self.logging = LoggingSettings({})
         
         self._load(config_path)
@@ -57,6 +69,7 @@ class ClientSettings:
             # Try alternative paths
             alt_paths = [
                 '/etc/proxmox-tracker/client_config.yaml',
+                '/opt/proxmox-tracker/client_config.yaml',
                 os.path.join(os.path.dirname(__file__), '..', 'client_config.yaml')
             ]
             for alt in alt_paths:
@@ -72,31 +85,35 @@ class ClientSettings:
         
         # Node settings
         node_data = data.get('node', {})
-        self.node_name = node_data.get('name', os.uname().nodename if hasattr(os, 'uname') else 'pve')
+        self.node_name = node_data.get('name', '')
         self.hostname = node_data.get('hostname', '')
         
-        # Log paths
-        self.log_paths = data.get('log_paths', [
-            '/var/log/pve/tasks/index',
-            '/var/log/pve/tasks/active'
-        ])
+        # Auto-detect node name if not set
+        if not self.node_name:
+            try:
+                self.node_name = socket.gethostname()
+            except Exception:
+                self.node_name = 'pve'
         
         # State file
         self.state_file = data.get('state_file', '/var/lib/proxmox-tracker/state.json')
         
+        # Proxmox settings
+        self.proxmox = ProxmoxSettings(data.get('proxmox', {}))
+        
         # Manager settings
         self.manager = ManagerSettings(data.get('manager', {}))
         
-        # Sync settings
-        self.sync = SyncSettings(data.get('sync', {}))
+        # Polling settings
+        self.polling = PollingSettings(data.get('polling', {}))
         
         # Logging settings
         self.logging = LoggingSettings(data.get('logging', {}))
 
 
-def get_settings() -> ClientSettings:
+def get_settings(config_path: str = 'client_config.yaml') -> ClientSettings:
     """Get settings instance"""
-    return ClientSettings()
+    return ClientSettings(config_path)
 
 
 # Global instance

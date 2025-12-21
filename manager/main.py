@@ -416,8 +416,8 @@ def get_dashboard_html() -> str:
                 <span class="fw-bold">Proxmox VM Tracker</span>
             </a>
             <div class="d-flex align-items-center gap-3">
-                <button class="btn btn-outline-secondary btn-sm" onclick="syncSessions()">
-                    <i class="bi bi-arrow-repeat"></i> Sync from Proxmox
+                <button class="btn btn-primary btn-sm" onclick="forceSync()" id="forceSyncBtn">
+                    <i class="bi bi-arrow-clockwise"></i> Force Sync
                 </button>
                 <span class="text-muted small" id="lastUpdated">Last updated: --</span>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
@@ -720,6 +720,53 @@ def get_dashboard_html() -> str:
             updateStats();
             document.getElementById('lastUpdated').textContent = 
                 'Last updated: ' + new Date().toLocaleTimeString();
+        }
+        
+        async function forceSync() {
+            const btn = document.getElementById('forceSyncBtn');
+            const originalHTML = btn.innerHTML;
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
+                
+                const response = await fetch(`${API_BASE}/api/ingest/force-sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Show success message
+                    btn.innerHTML = '<i class="bi bi-check-lg"></i> Sync Requested';
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-success');
+                    
+                    // Wait a moment then reload data
+                    setTimeout(async () => {
+                        await loadAllData();
+                        btn.innerHTML = originalHTML;
+                        btn.classList.remove('btn-success');
+                        btn.classList.add('btn-primary');
+                        btn.disabled = false;
+                    }, 2000);
+                } else {
+                    throw new Error(result.message || 'Sync failed');
+                }
+            } catch (err) {
+                console.error('Force sync failed:', err);
+                btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Error';
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-danger');
+                
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                    btn.classList.remove('btn-danger');
+                    btn.classList.add('btn-primary');
+                    btn.disabled = false;
+                }, 3000);
+            }
         }
         
         async function loadVMs() {

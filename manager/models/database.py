@@ -56,13 +56,14 @@ class VMSession(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     vm_id = Column(String(50), nullable=False, index=True)
     node = Column(String(100), nullable=False, index=True)
+    vm_type = Column(String(20), default="qemu")  # qemu or lxc
     start_time = Column(DateTime, nullable=False, index=True)
     end_time = Column(DateTime, nullable=True)
     duration_seconds = Column(Integer, nullable=True)
     user = Column(String(100), nullable=True)
     
-    # Proxmox-specific identifiers
-    start_upid = Column(String(500), nullable=True, unique=True)
+    # Proxmox-specific identifiers (optional for state-based tracking)
+    start_upid = Column(String(500), nullable=True)
     stop_upid = Column(String(500), nullable=True)
     
     # Status tracking
@@ -91,6 +92,35 @@ class VMSession(Base):
     def __repr__(self):
         status = "running" if self.is_running else "stopped"
         return f"<VMSession(vm_id={self.vm_id}, node={self.node}, status={status})>"
+
+
+class TrackedVM(Base):
+    """
+    Current state of tracked VMs across all nodes.
+    Updated in real-time as clients report state changes.
+    """
+    __tablename__ = "tracked_vms"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    vm_id = Column(String(50), nullable=False, index=True)
+    node = Column(String(100), nullable=False, index=True)
+    name = Column(String(255), nullable=True)
+    vm_type = Column(String(20), default="qemu")  # qemu or lxc
+    
+    # Current status
+    current_status = Column(String(20), default="unknown")  # running, stopped, paused
+    last_seen = Column(DateTime, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('idx_tracked_vm_node', 'node', 'vm_id', unique=True),
+    )
+    
+    def __repr__(self):
+        return f"<TrackedVM(vm_id={self.vm_id}, node={self.node}, status={self.current_status})>"
 
 
 class Rental(Base):

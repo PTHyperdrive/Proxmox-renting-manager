@@ -1,37 +1,53 @@
-# Client Configuration (Proxmox machines)
+# Proxmox VM Tracker - Client Configuration
+# Deploy to: /opt/proxmox-tracker/client_config.yaml on each Proxmox node
 
+# Node identification
 node:
-  # Unique identifier for this Proxmox node
-  name: "pve1"
-  # Optional: descriptive hostname
-  hostname: "proxmox-node-1.local"
+  # Unique name for this Proxmox node (must be unique across all nodes)
+  name: "pve-01"
+  # Optional hostname for display
+  hostname: ""
 
+# Proxmox API connection
+proxmox:
+  # Proxmox API host (usually localhost on the node itself)
+  host: "127.0.0.1"
+  port: 8006
+  
+  # Authentication - use API token (recommended)
+  # Create token: Datacenter > Permissions > API Tokens > Add
+  # Required privileges: VM.Audit on / (root level)
+  user: "root@pam"
+  token_name: "tracker"
+  token_value: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  
+  # SSL verification (false for self-signed certs)
+  verify_ssl: false
+
+# Manager server connection
 manager:
-  # Manager server URL
+  # URL of the central Manager server
   url: "http://manager-ip:8000"
-  # API key (must match manager's security.api_key)
-  api_key: "change-this-to-match-manager"
+  
+  # API key for authentication (must match manager's config)
+  api_key: "your-shared-api-key"
+  
   # Request timeout in seconds
   timeout: 30
 
-log_paths:
-  # Proxmox task log files to watch
-  - "/var/log/pve/tasks/index"
-  - "/var/log/pve/tasks/active"
-
-sync:
-  # How often to check for new events (seconds)
+# VM state polling settings
+polling:
+  # How often to check VM states (seconds)
   interval_seconds: 30
-  # Maximum events to send in one request
-  batch_size: 100
-  # Retry failed requests
-  max_retries: 3
-  retry_delay: 10
+  
+  # Report full state even if nothing changed (for debugging)
+  report_unchanged: false
+  
+  # Track VM types
+  track_qemu: true      # QEMU/KVM virtual machines
+  track_lxc: true       # LXC containers
 
-# State file to track last processed position
-state_file: "/var/lib/proxmox-tracker/state.json"
-
+# Logging configuration
 logging:
-  level: "INFO"
-  # Log file (leave empty for stdout only)
-  file: "/var/log/proxmox-tracker/client.log"
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: ""       # Leave empty for stdout only
