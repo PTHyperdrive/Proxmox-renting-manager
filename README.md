@@ -98,7 +98,7 @@ EOF
 # Configure
 nano config.yaml  # Edit MySQL credentials and API key
 
-# Test run
+# Test run (HTTP)
 python -m uvicorn manager.main:app --host 0.0.0.0 --port 8000
 
 # Install as service
@@ -106,6 +106,26 @@ sudo cp deploy/proxmox-tracker-manager.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable proxmox-tracker-manager
 sudo systemctl start proxmox-tracker-manager
+```
+
+#### Enable HTTPS (Recommended)
+
+```bash
+# Create SSL directory
+mkdir -p /opt/proxmox-tracker/ssl
+cd /opt/proxmox-tracker/ssl
+
+# Generate self-signed certificate (valid for 365 days)
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes \
+  -subj "/C=US/ST=State/L=City/O=Organization/CN=pve-tracker"
+
+# Set permissions
+chmod 600 key.pem
+chmod 644 cert.pem
+
+# Update service file to use HTTPS (already configured in deploy/proxmox-tracker-manager.service)
+sudo systemctl daemon-reload
+sudo systemctl restart proxmox-tracker-manager
 ```
 
 ---
@@ -141,8 +161,9 @@ proxmox:
   verify_ssl: false
 
 manager:
-  url: "http://YOUR-MANAGER-IP:8000"
+  url: "https://YOUR-MANAGER-IP:8000"  # Use https:// for secure connection
   api_key: "shared-secret-key"
+  verify_ssl: false  # Set to false for self-signed certificates
 
 polling:
   interval_seconds: 30

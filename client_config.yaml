@@ -27,13 +27,17 @@ proxmox:
 # Manager server connection
 manager:
   # URL of the central Manager server
-  url: "http://manager-ip:8000"
+  # Use https:// for secure communication
+  url: "https://manager-ip:8000"
   
   # API key for authentication (must match manager's config)
   api_key: "your-shared-api-key"
   
   # Request timeout in seconds
   timeout: 30
+  
+  # SSL verification (false for self-signed certificates)
+  verify_ssl: false
 
 # VM state polling settings
 polling:

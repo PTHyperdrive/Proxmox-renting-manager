@@ -1,25 +1,28 @@
 [Unit]
 Description=Proxmox VM Time Tracker Manager
 After=network.target mysql.service
+Wants=mysql.service
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/opt/proxmox-tracker
-
-# Use the Python from venv - update this path if different
-ExecStart=/opt/proxmox-tracker/venv/bin/python -m uvicorn manager.main:app --host 0.0.0.0 --port 8000
-
-Restart=always
-RestartSec=10
-
-# Environment
 Environment=PYTHONUNBUFFERED=1
 
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=proxmox-tracker-manager
+# For HTTP (no SSL):
+# ExecStart=/opt/proxmox-tracker/venv/bin/python -m uvicorn manager.main:app --host 0.0.0.0 --port 8000
+
+# For HTTPS with SSL certificates:
+ExecStart=/opt/proxmox-tracker/venv/bin/python -m uvicorn manager.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile=/opt/proxmox-tracker/ssl/key.pem --ssl-certfile=/opt/proxmox-tracker/ssl/cert.pem
+
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/proxmox-tracker /var/log
 
 [Install]
 WantedBy=multi-user.target

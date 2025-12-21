@@ -2,6 +2,7 @@
 API Client
 
 HTTP client for sending VM events to the Manager server.
+Supports both HTTP and HTTPS with optional SSL verification bypass.
 """
 
 import logging
@@ -23,11 +24,13 @@ class APIClient:
         self,
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        timeout: int = 30
+        timeout: int = 30,
+        verify_ssl: bool = True
     ):
         self.base_url = (base_url or settings.manager.url).rstrip('/')
         self.api_key = api_key or settings.manager.api_key
         self.timeout = timeout or settings.manager.timeout
+        self.verify_ssl = verify_ssl if verify_ssl is not None else getattr(settings.manager, 'verify_ssl', True)
         self._force_sync_pending = False
     
     def _get_headers(self) -> dict:
@@ -40,9 +43,16 @@ class APIClient:
             headers['X-API-Key'] = self.api_key
         return headers
     
+    def _get_client(self, timeout: Optional[int] = None) -> httpx.AsyncClient:
+        """Get configured httpx client with SSL settings"""
+        return httpx.AsyncClient(
+            timeout=timeout or self.timeout,
+            verify=self.verify_ssl
+        )
+    
     async def register_node(self, node_name: str, hostname: str = '') -> dict:
         """Register this node with the manager."""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with self._get_client() as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/api/ingest/register",
@@ -79,7 +89,7 @@ class APIClient:
             vm_type: qemu or lxc
             start_time: When VM started (default: now)
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with self._get_client() as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/api/ingest/vm-start",
@@ -114,7 +124,7 @@ class APIClient:
             vm_id: VM ID
             stop_time: When VM stopped (default: now)
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with self._get_client() as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/api/ingest/vm-stop",
@@ -143,7 +153,7 @@ class APIClient:
         
         Used for initial sync and force sync operations.
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with self._get_client() as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/api/ingest/vm-states",
@@ -169,7 +179,7 @@ class APIClient:
         Returns:
             Response dict with 'force_sync' flag if sync requested
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with self._get_client() as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/api/ingest/heartbeat",
@@ -202,7 +212,7 @@ class APIClient:
     
     async def check_connection(self) -> bool:
         """Check if manager is reachable."""
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with self._get_client(timeout=5) as client:
             try:
                 response = await client.get(f"{self.base_url}/health")
                 return response.status_code == 200

@@ -29,6 +29,7 @@ class ManagerSettings:
         self.url = data.get('url', 'http://localhost:8000')
         self.api_key = data.get('api_key', '')
         self.timeout = data.get('timeout', 30)
+        self.verify_ssl = data.get('verify_ssl', False)  # False to allow self-signed certs
 
 
 class PollingSettings:
