@@ -225,16 +225,18 @@ async def get_vm_daily_usage(
 async def remove_vm(
     vm_id: str,
     node: Optional[str] = Query(None),
-    delete_sessions: bool = Query(False, description="Also delete session history"),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Remove a VM from tracking.
+    Remove a VM from the database completely.
+    
+    This deletes:
+    - TrackedVM record (current state)
+    - All VMSession records (history)
     
     Args:
         vm_id: VM ID to remove
-        node: Optional node filter
-        delete_sessions: If True, also delete session history
+        node: Optional node filter (if not specified, removes from all nodes)
     """
     from sqlalchemy import delete
     
@@ -249,22 +251,22 @@ async def remove_vm(
     result = await db.execute(tracked_query)
     deleted_tracked = result.rowcount
     
-    # Optionally delete sessions
-    if delete_sessions:
-        session_query = delete(VMSession).where(VMSession.vm_id == vm_id)
-        if node:
-            session_query = session_query.where(VMSession.node == node)
-        
-        result = await db.execute(session_query)
-        deleted_sessions = result.rowcount
+    # Delete all sessions
+    session_query = delete(VMSession).where(VMSession.vm_id == vm_id)
+    if node:
+        session_query = session_query.where(VMSession.node == node)
+    
+    result = await db.execute(session_query)
+    deleted_sessions = result.rowcount
     
     if deleted_tracked == 0 and deleted_sessions == 0:
         raise HTTPException(status_code=404, detail=f"VM {vm_id} not found")
     
     return {
         "success": True,
-        "message": f"VM {vm_id} removed from tracking",
+        "message": f"VM {vm_id} removed from database",
         "deleted_tracked": deleted_tracked,
         "deleted_sessions": deleted_sessions
     }
+
 

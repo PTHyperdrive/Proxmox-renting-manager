@@ -889,7 +889,7 @@ def get_dashboard_html() -> str:
         }
         
         async function removeVM(vmId, node) {
-            if (!confirm(`Remove VM ${vmId} from tracking?\n\nThis will stop tracking this VM. Session history will be kept.`)) {
+            if (!confirm(`Delete VM ${vmId} from database?\n\nThis will permanently delete:\n• Current tracking state\n• All session history\n\nThis action cannot be undone.`)) {
                 return;
             }
             
@@ -903,11 +903,11 @@ def get_dashboard_html() -> str:
                     updateStats();
                 } else {
                     const error = await response.json();
-                    alert('Failed to remove VM: ' + (error.detail || 'Unknown error'));
+                    alert('Failed to delete VM: ' + (error.detail || 'Unknown error'));
                 }
             } catch (err) {
-                console.error('Failed to remove VM:', err);
-                alert('Failed to remove VM');
+                console.error('Failed to delete VM:', err);
+                alert('Failed to delete VM');
             }
         }
         
