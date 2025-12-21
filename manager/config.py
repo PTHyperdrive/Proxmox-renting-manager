@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from functools import lru_cache
 from typing import Optional, List
+from urllib.parse import quote_plus
 
 import yaml
 from pydantic import Field
@@ -28,9 +29,12 @@ class DatabaseSettings(BaseSettings):
     
     @property
     def url(self) -> str:
-        """Generate SQLAlchemy database URL"""
+        """Generate SQLAlchemy database URL with properly encoded credentials"""
         if self.type == "mysql":
-            return f"mysql+aiomysql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
+            # URL-encode user and password to handle special characters (#, @, etc.)
+            encoded_user = quote_plus(self.user)
+            encoded_password = quote_plus(self.password)
+            return f"mysql+aiomysql://{encoded_user}:{encoded_password}@{self.host}:{self.port}/{self.database}"
         else:
             # Fallback to SQLite for development
             return "sqlite+aiosqlite:///./vm_tracking.db"
