@@ -8,10 +8,10 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.database import VMSession, get_db
+from ..models.database import VMSession, TrackedVM, get_db
 from ..models.schemas import VMInfo, VMListResponse, VMUsage
 from ..services.time_tracker import TimeTracker
 
@@ -27,47 +27,79 @@ async def list_vms(
 ):
     """
     List all tracked VMs with their usage statistics.
-    """
-    query = select(VMSession.vm_id, VMSession.node).distinct()
-    if node:
-        query = query.where(VMSession.node == node)
-    query = query.order_by(VMSession.vm_id)
     
-    result = await db.execute(query)
-    rows = result.fetchall()
+    Combines data from:
+    - TrackedVM: Real-time VM status from Proxmox
+    - VMSession: Historical session data for runtime calculation
+    """
+    # First, get all tracked VMs (real-time status)
+    tracked_query = select(TrackedVM)
+    if node:
+        tracked_query = tracked_query.where(TrackedVM.node == node)
+    tracked_query = tracked_query.order_by(TrackedVM.vm_id)
+    
+    tracked_result = await db.execute(tracked_query)
+    tracked_vms = {(vm.vm_id, vm.node): vm for vm in tracked_result.scalars().all()}
+    
+    # Also get VMs from sessions (in case there are VMs with history but not currently tracked)
+    session_query = select(VMSession.vm_id, VMSession.node).distinct()
+    if node:
+        session_query = session_query.where(VMSession.node == node)
+    
+    session_result = await db.execute(session_query)
+    session_vms = set((row.vm_id, row.node) for row in session_result.fetchall())
+    
+    # Combine all VM IDs
+    all_vm_keys = set(tracked_vms.keys()) | session_vms
     
     vms = []
-    for row in rows:
-        # Get stats
+    for vm_id, vm_node in sorted(all_vm_keys, key=lambda x: (x[1], x[0])):
+        tracked = tracked_vms.get((vm_id, vm_node))
+        
+        # Get stats from sessions
         stats_result = await db.execute(
             select(
                 func.coalesce(func.sum(VMSession.duration_seconds), 0).label('total_seconds'),
                 func.count(VMSession.id).label('session_count')
             )
-            .where(VMSession.vm_id == row.vm_id, VMSession.node == row.node)
+            .where(VMSession.vm_id == vm_id, VMSession.node == vm_node)
         )
         stats = stats_result.fetchone()
         total_seconds = int(stats.total_seconds) if stats.total_seconds else 0
         
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
-        
-        # Check for active session
+        # If VM is currently running, add time since session started
         active_result = await db.execute(
-            select(VMSession.id)
-            .where(VMSession.vm_id == row.vm_id, VMSession.node == row.node, VMSession.is_running == True)
+            select(VMSession)
+            .where(VMSession.vm_id == vm_id, VMSession.node == vm_node, VMSession.is_running == True)
             .limit(1)
         )
         active_session = active_result.scalar_one_or_none()
         
+        if active_session:
+            # Add running time to total
+            running_seconds = int((datetime.utcnow() - active_session.start_time).total_seconds())
+            total_seconds += running_seconds
+        
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        
+        # Determine status from TrackedVM or active session
+        if tracked:
+            status = tracked.current_status
+            name = tracked.name
+        else:
+            status = "running" if active_session else "stopped"
+            name = None
+        
         vms.append(VMInfo(
-            vm_id=row.vm_id,
-            node=row.node,
-            status="running" if active_session else "stopped",
+            vm_id=vm_id,
+            name=name,
+            node=vm_node,
+            status=status,
             is_tracked=True,
             total_runtime_seconds=total_seconds,
             formatted_runtime=f"{hours}h {minutes}m",
-            active_session_id=active_session
+            active_session_id=active_session.id if active_session else None
         ))
     
     return VMListResponse(vms=vms, total=len(vms))
@@ -80,48 +112,76 @@ async def get_vm(
     db: AsyncSession = Depends(get_db)
 ):
     """Get details for a specific VM."""
-    conditions = [VMSession.vm_id == vm_id]
+    # Try to get from TrackedVM first
+    tracked_query = select(TrackedVM).where(TrackedVM.vm_id == vm_id)
     if node:
-        conditions.append(VMSession.node == node)
+        tracked_query = tracked_query.where(TrackedVM.node == node)
     
-    result = await db.execute(
-        select(VMSession.vm_id, VMSession.node)
-        .where(*conditions)
-        .limit(1)
-    )
-    row = result.fetchone()
+    tracked_result = await db.execute(tracked_query.limit(1))
+    tracked = tracked_result.scalar_one_or_none()
     
-    if not row:
-        raise HTTPException(status_code=404, detail=f"VM {vm_id} not found")
+    # If not found in TrackedVM, check sessions
+    if not tracked:
+        conditions = [VMSession.vm_id == vm_id]
+        if node:
+            conditions.append(VMSession.node == node)
+        
+        session_result = await db.execute(
+            select(VMSession.vm_id, VMSession.node)
+            .where(*conditions)
+            .limit(1)
+        )
+        row = session_result.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail=f"VM {vm_id} not found")
+        
+        vm_node = row.node
+    else:
+        vm_node = tracked.node
     
+    # Get stats
     stats_result = await db.execute(
         select(
             func.coalesce(func.sum(VMSession.duration_seconds), 0).label('total_seconds'),
             func.count(VMSession.id).label('session_count')
         )
-        .where(VMSession.vm_id == row.vm_id, VMSession.node == row.node)
+        .where(VMSession.vm_id == vm_id, VMSession.node == vm_node)
     )
     stats = stats_result.fetchone()
     total_seconds = int(stats.total_seconds) if stats.total_seconds else 0
     
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    
+    # Check for active session
     active_result = await db.execute(
-        select(VMSession.id)
-        .where(VMSession.vm_id == vm_id, VMSession.is_running == True)
+        select(VMSession)
+        .where(VMSession.vm_id == vm_id, VMSession.node == vm_node, VMSession.is_running == True)
         .limit(1)
     )
     active_session = active_result.scalar_one_or_none()
     
+    if active_session:
+        running_seconds = int((datetime.utcnow() - active_session.start_time).total_seconds())
+        total_seconds += running_seconds
+    
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    
+    if tracked:
+        status = tracked.current_status
+        name = tracked.name
+    else:
+        status = "running" if active_session else "stopped"
+        name = None
+    
     return VMInfo(
-        vm_id=row.vm_id,
-        node=row.node,
-        status="running" if active_session else "stopped",
+        vm_id=vm_id,
+        name=name,
+        node=vm_node,
+        status=status,
         is_tracked=True,
         total_runtime_seconds=total_seconds,
         formatted_runtime=f"{hours}h {minutes}m",
-        active_session_id=active_session
+        active_session_id=active_session.id if active_session else None
     )
 
 
