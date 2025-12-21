@@ -1,6 +1,6 @@
 # Proxmox VM Time Tracking Service
 
-A distributed system for tracking VM running time across multiple Proxmox nodes.
+A distributed system for tracking VM running time across multiple Proxmox nodes using **real-time state monitoring**.
 
 ## Architecture
 
@@ -13,7 +13,7 @@ A distributed system for tracking VM running time across multiple Proxmox nodes.
 │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘             │
 └─────────┼────────────────┼────────────────┼─────────────────────┘
           │                │                │
-          │   HTTP/API     │                │
+          │   Proxmox API  │   HTTP/API     │
           └────────────────┼────────────────┘
                            │
                            ▼
@@ -26,26 +26,63 @@ A distributed system for tracking VM running time across multiple Proxmox nodes.
 │                           │                                     │
 │  ┌────────────────────────▼────────────────────────────────┐   │
 │  │                   MySQL Database                         │   │
-│  │          (Sessions, Rentals, Nodes)                     │   │
+│  │          (Sessions, Rentals, Nodes, VMs)                │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Components
+## How It Works
 
-| Component | Location | Description |
-|-----------|----------|-------------|
-| **Manager** | Ubuntu 24.04 server | Central API server with MySQL, web dashboard |
-| **Client** | Each Proxmox machine | Watches logs, sends events to Manager |
+1. **Client polls Proxmox API** every 30 seconds for VM status
+2. **Detects state changes** (VM started/stopped)
+3. **Reports to Manager** immediately via HTTP API
+4. **Manager tracks sessions** with start/end times and duration
+5. **Force Sync** button reconciles all VM states on demand
 
 ## Quick Start
 
-### 1. Set Up Manager (Ubuntu 24.04)
+### 1. Create Proxmox API Token
+
+On each Proxmox node, create an API token for the client:
+
+#### Via Web UI:
+1. Go to **Datacenter** → **Permissions** → **API Tokens**
+2. Click **Add**
+3. **User**: `root@pam`
+4. **Token ID**: `tracker`
+5. **Privilege Separation**: ❌ Uncheck (or add VM.Audit permission)
+6. Click **Add** and **copy the token value**
+
+#### Via CLI:
+```bash
+pveum user token add root@pam tracker --privsep=0
+```
+
+Output:
+```
+┌──────────────┬──────────────────────────────────────┐
+│ key          │ value                                │
+├──────────────┼──────────────────────────────────────┤
+│ full-tokenid │ root@pam!tracker                     │
+│ info         │ {"privsep":"0"}                      │
+│ value        │ xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx │
+└──────────────┴──────────────────────────────────────┘
+```
+
+**Save the token value** - you'll need it for `client_config.yaml`.
+
+---
+
+### 2. Set Up Manager (Ubuntu 24.04)
 
 ```bash
 # Clone repository
 git clone <repo-url> /opt/proxmox-tracker
 cd /opt/proxmox-tracker
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements-manager.txt
@@ -59,18 +96,21 @@ FLUSH PRIVILEGES;
 EOF
 
 # Configure
-nano config.yaml  # Edit MySQL credentials
+nano config.yaml  # Edit MySQL credentials and API key
 
-# Run manually
+# Test run
 python -m uvicorn manager.main:app --host 0.0.0.0 --port 8000
 
-# Or install as service
+# Install as service
 sudo cp deploy/proxmox-tracker-manager.service /etc/systemd/system/
+sudo systemctl daemon-reload
 sudo systemctl enable proxmox-tracker-manager
 sudo systemctl start proxmox-tracker-manager
 ```
 
-### 2. Set Up Client (Each Proxmox Machine)
+---
+
+### 3. Set Up Client (Each Proxmox Machine)
 
 ```bash
 # Copy client files to Proxmox
@@ -81,23 +121,63 @@ ssh root@pve-node
 
 # Install dependencies
 cd /opt/proxmox-tracker
-pip install -r requirements-client.txt
+pip3 install -r requirements-client.txt
 
-# Configure
-nano client_config.yaml  # Set manager URL and API key
+# Configure - ADD YOUR API TOKEN HERE
+nano client_config.yaml
+```
 
-# Run manually
-python -m client.main --once  # Test single sync
+**client_config.yaml:**
+```yaml
+node:
+  name: "StormWorking"  # Your node name
 
-# Or install as service
+proxmox:
+  host: "127.0.0.1"
+  port: 8006
+  user: "root@pam"
+  token_name: "tracker"
+  token_value: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"  # Your token
+  verify_ssl: false
+
+manager:
+  url: "http://YOUR-MANAGER-IP:8000"
+  api_key: "shared-secret-key"
+
+polling:
+  interval_seconds: 30
+  track_qemu: true
+  track_lxc: true
+```
+
+```bash
+# Test Proxmox API connection
+python3 -m client.main --test
+
+# Test single sync
+python3 -m client.main --once
+
+# Install as service
 cp deploy/proxmox-tracker-client.service /etc/systemd/system/
+systemctl daemon-reload
 systemctl enable proxmox-tracker-client
 systemctl start proxmox-tracker-client
 ```
 
-### 3. Access Dashboard
+---
+
+### 4. Access Dashboard
 
 Open: `http://your-manager-ip:8000`
+
+Features:
+- 🌙/☀️ Dark/Light mode toggle
+- 📊 VM status overview
+- ⏱️ Running time tracking
+- 🔄 Force Sync button
+- 📅 Rental management
+
+---
 
 ## Configuration
 
@@ -126,13 +206,25 @@ server:
 node:
   name: "pve-01"  # Unique per node
 
+proxmox:
+  host: "127.0.0.1"
+  port: 8006
+  user: "root@pam"
+  token_name: "tracker"
+  token_value: "your-api-token"
+  verify_ssl: false
+
 manager:
   url: "http://manager-ip:8000"
   api_key: "shared-secret-key"
 
-sync:
+polling:
   interval_seconds: 30
+  track_qemu: true   # Track QEMU VMs
+  track_lxc: true    # Track LXC containers
 ```
+
+---
 
 ## API Endpoints
 
@@ -141,8 +233,11 @@ sync:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/ingest/register` | Register a new node |
-| POST | `/api/ingest/events` | Send VM events |
+| POST | `/api/ingest/vm-start` | Report VM started |
+| POST | `/api/ingest/vm-stop` | Report VM stopped |
+| POST | `/api/ingest/vm-states` | Send full state snapshot |
 | POST | `/api/ingest/heartbeat` | Node heartbeat |
+| POST | `/api/ingest/force-sync` | Request sync from all nodes |
 
 ### Management API
 
@@ -154,6 +249,8 @@ sync:
 | GET/POST/PUT/DELETE | `/api/rentals` | Manage rentals |
 | GET | `/api/rentals/{id}/report` | Usage report |
 
+---
+
 ## Project Structure
 
 ```
@@ -162,14 +259,19 @@ proxmox-tracker/
 │   ├── main.py              # FastAPI app + dashboard
 │   ├── config.py            # MySQL configuration
 │   ├── models/              # SQLAlchemy models
+│   │   ├── database.py      # VMSession, TrackedVM, Rental, ProxmoxNode
+│   │   └── schemas.py       # Pydantic models
 │   ├── services/            # Business logic
+│   │   └── ingest_service.py
 │   └── routes/              # API endpoints
+│       ├── ingest.py        # Client data ingestion
+│       └── vms.py, sessions.py, rentals.py, nodes.py
 │
 ├── client/                  # Client (Proxmox machines)
-│   ├── main.py              # Client daemon
+│   ├── main.py              # State polling daemon
 │   ├── config.py            # Client configuration
-│   ├── log_parser.py        # Proxmox log parser
-│   └── api_client.py        # HTTP client
+│   ├── proxmox_api.py       # Proxmox API client
+│   └── api_client.py        # Manager HTTP client
 │
 ├── deploy/                  # Deployment files
 │   ├── proxmox-tracker-manager.service
@@ -181,31 +283,58 @@ proxmox-tracker/
 └── requirements-client.txt  # Client dependencies
 ```
 
+---
+
 ## Features
 
 - 📊 **Multi-Node Tracking** - Track VMs across multiple Proxmox clusters
-- ⏱️ **Real-Time Sync** - Events sent every 30 seconds (configurable)
+- ⏱️ **Real-Time State Monitoring** - Uses Proxmox API, not logs
+- 🔄 **Force Sync** - Reconcile all VM states on demand
 - 📅 **Rental Management** - Set billing start months, generate usage reports
 - 🔒 **API Key Auth** - Secure client-manager communication
-- 🌐 **Web Dashboard** - Beautiful dark-themed dashboard
+- 🌐 **Web Dashboard** - Beautiful dark/light mode dashboard
 - 📈 **MySQL Storage** - Production-ready database
+
+---
 
 ## Troubleshooting
 
-### Client not connecting
+### Test Proxmox API connection
+```bash
+python3 -m client.main --test
+```
+
+Expected output:
+```
+✓ Proxmox API connection successful
+  Node: StormWorking
+  VMs found: 5
+    - 104: vGPU-1 (running)
+    - 105: vGPU-2 (stopped)
+```
+
+### Client not connecting to Manager
 ```bash
 # Check client logs
 journalctl -u proxmox-tracker-client -f
 
-# Test connection manually
+# Test manager is reachable
 curl http://manager-ip:8000/health
 ```
 
-### Events not syncing
+### API Token permission denied
 ```bash
-# Check log files exist
-ls -la /var/log/pve/tasks/
-
-# Run client once with debug
-python -m client.main --once
+# Add VM.Audit permission to token
+pveum aclmod / -user root@pam -token tracker -role PVEVMUser
 ```
+
+### VMs not showing up
+1. Check `track_qemu` and `track_lxc` settings in client_config.yaml
+2. Run `python3 -m client.main --once` to force sync
+3. Click "Force Sync" button in dashboard
+
+---
+
+## License
+
+MIT

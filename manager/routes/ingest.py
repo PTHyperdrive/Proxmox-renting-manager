@@ -120,8 +120,7 @@ async def heartbeat(
 
 @router.post("/force-sync", response_model=ForceSyncResponse)
 async def force_sync(
-    request: ForceSyncRequest = None,
-    api_key: str = Header(None, alias="X-API-Key")
+    request: ForceSyncRequest = None
 ):
     """
     Request force sync from all or specific nodes.
@@ -129,12 +128,12 @@ async def force_sync(
     This sets a flag that clients will see in their next heartbeat response.
     When they see force_sync=True, they should send a full VM states snapshot.
     
+    Note: No API key required - this is called from the dashboard.
+    
     Args:
         target_node: If specified, only request sync from this node.
                     If not specified, request from all nodes.
     """
-    verify_api_key(api_key)
-    
     target = request.target_node if request else None
     count = ingest_service.request_force_sync(target)
     
@@ -148,3 +147,4 @@ async def force_sync(
         message=message,
         nodes_notified=count if count > 0 else 0
     )
+
