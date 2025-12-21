@@ -1,0 +1,16 @@
+# Proxmox VM Time Tracking Service - Dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+sqlalchemy>=2.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+proxmoxer>=2.0.0
+paramiko>=3.4.0
+pyyaml>=6.0.0
+python-dateutil>=2.8.0
+httpx>=0.25.0
+aiosqlite>=0.19.0
+
+# Development & Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0

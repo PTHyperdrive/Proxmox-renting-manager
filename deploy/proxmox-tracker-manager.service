@@ -1,0 +1,22 @@
+[Unit]
+Description=Proxmox VM Time Tracker Manager
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/proxmox-tracker
+ExecStart=/usr/bin/python3 -m uvicorn manager.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=proxmox-tracker-manager
+
+[Install]
+WantedBy=multi-user.target

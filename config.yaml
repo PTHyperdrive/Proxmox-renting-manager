@@ -1,0 +1,29 @@
+# Manager Configuration (Ubuntu 24.04 with MySQL)
+
+database:
+  type: mysql
+  host: localhost
+  port: 3306
+  user: vm_tracker
+  password: "change-this-password"
+  database: vm_tracking
+  # Connection pool settings
+  pool_size: 5
+  max_overflow: 10
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
+
+security:
+  # Shared API key for client authentication
+  # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+  api_key: "change-this-to-a-secure-key"
+  
+  # Allow these IPs without API key (optional)
+  trusted_ips: []
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

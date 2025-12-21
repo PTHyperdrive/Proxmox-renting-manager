@@ -1,0 +1,22 @@
+[Unit]
+Description=Proxmox VM Time Tracker Client
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/proxmox-tracker
+ExecStart=/usr/bin/python3 -m client.main --daemon
+Restart=always
+RestartSec=10
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=proxmox-tracker
+
+[Install]
+WantedBy=multi-user.target

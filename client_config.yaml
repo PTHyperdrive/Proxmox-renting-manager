@@ -1,0 +1,37 @@
+# Client Configuration (Proxmox machines)
+
+node:
+  # Unique identifier for this Proxmox node
+  name: "pve1"
+  # Optional: descriptive hostname
+  hostname: "proxmox-node-1.local"
+
+manager:
+  # Manager server URL
+  url: "http://manager-ip:8000"
+  # API key (must match manager's security.api_key)
+  api_key: "change-this-to-match-manager"
+  # Request timeout in seconds
+  timeout: 30
+
+log_paths:
+  # Proxmox task log files to watch
+  - "/var/log/pve/tasks/index"
+  - "/var/log/pve/tasks/active"
+
+sync:
+  # How often to check for new events (seconds)
+  interval_seconds: 30
+  # Maximum events to send in one request
+  batch_size: 100
+  # Retry failed requests
+  max_retries: 3
+  retry_delay: 10
+
+# State file to track last processed position
+state_file: "/var/lib/proxmox-tracker/state.json"
+
+logging:
+  level: "INFO"
+  # Log file (leave empty for stdout only)
+  file: "/var/log/proxmox-tracker/client.log"
