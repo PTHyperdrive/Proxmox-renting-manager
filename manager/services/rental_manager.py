@@ -31,6 +31,11 @@ class RentalManager:
     async def create_rental(self, rental_data: RentalCreate) -> Rental:
         """Create a new rental period."""
         async with get_db_context() as db:
+            # Handle billing_cycle - convert enum to string if needed
+            billing_cycle = rental_data.billing_cycle
+            if hasattr(billing_cycle, 'value'):
+                billing_cycle = billing_cycle.value
+            
             rental = Rental(
                 vm_id=rental_data.vm_id,
                 node=rental_data.node,
@@ -38,8 +43,10 @@ class RentalManager:
                 customer_email=rental_data.customer_email,
                 rental_start=rental_data.rental_start,
                 rental_end=rental_data.rental_end,
-                billing_cycle=rental_data.billing_cycle,
+                billing_cycle=billing_cycle,
                 rate_per_hour=rental_data.rate_per_hour,
+                rate_per_week=rental_data.rate_per_week,
+                rate_per_month=rental_data.rate_per_month,
                 notes=rental_data.notes,
                 is_active=True
             )
@@ -47,7 +54,7 @@ class RentalManager:
             await db.flush()
             await db.refresh(rental)
             
-            logger.info(f"Created rental {rental.id} for VM {rental.vm_id}")
+            logger.info(f"Created rental {rental.id} for VM {rental.vm_id} ({billing_cycle})")
             return rental
     
     async def update_rental(
@@ -314,32 +321,50 @@ class RentalManager:
                 node=rental.node
             )
             
-            # Calculate cost
-            rental_cost = 0.0
-            if rental.rate_per_hour:
-                rental_cost = usage.total_hours * rental.rate_per_hour
-            
-            # Update customer totals
-            customers[customer_key]["total_vms"] += 1
-            customers[customer_key]["total_runtime_seconds"] += usage.total_seconds
-            customers[customer_key]["total_cost"] += rental_cost
-            
             # Update email if not set
             if rental.customer_email and not customers[customer_key]["customer_email"]:
                 customers[customer_key]["customer_email"] = rental.customer_email
+            
+            # Calculate cost based on billing cycle
+            rental_cost = 0.0
+            billing_cycle = rental.billing_cycle or "monthly"
+            total_hours = usage.total_seconds / 3600
+            total_days = usage.total_seconds / 86400
+            total_weeks = total_days / 7
+            total_months = total_days / 30  # Approximate
+            
+            if billing_cycle == "hourly" and rental.rate_per_hour:
+                rental_cost = total_hours * rental.rate_per_hour
+            elif billing_cycle == "weekly" and rental.rate_per_week:
+                rental_cost = total_weeks * rental.rate_per_week
+            elif billing_cycle == "monthly" and rental.rate_per_month:
+                rental_cost = total_months * rental.rate_per_month
+            elif rental.rate_per_hour:
+                # Fallback to hourly if set
+                rental_cost = total_hours * rental.rate_per_hour
+            
+            # Get the rate for display
+            rate_value, rate_unit = rental.get_rate() if hasattr(rental, 'get_rate') else (rental.rate_per_hour or 0, "hour")
             
             # Add rental details
             customers[customer_key]["rentals"].append({
                 "rental_id": rental.id,
                 "vm_id": rental.vm_id,
                 "node": rental.node,
+                "billing_cycle": billing_cycle,
                 "runtime_seconds": usage.total_seconds,
                 "runtime_formatted": usage.formatted_duration,
-                "rate_per_hour": rental.rate_per_hour,
-                "cost": rental_cost,
+                "rate": rate_value,
+                "rate_unit": rate_unit,
+                "cost": round(rental_cost, 2),
                 "rental_start": rental.rental_start.isoformat() if rental.rental_start else None,
                 "rental_end": rental.rental_end.isoformat() if rental.rental_end else None
             })
+            
+            # Update customer totals  
+            customers[customer_key]["total_vms"] += 1
+            customers[customer_key]["total_runtime_seconds"] += usage.total_seconds
+            customers[customer_key]["total_cost"] += rental_cost
         
         # Format totals for each customer
         customer_list = []

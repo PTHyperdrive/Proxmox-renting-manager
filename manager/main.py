@@ -693,8 +693,27 @@ def get_dashboard_html() -> str:
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Rate per Hour ($)</label>
-                            <input type="number" step="0.01" class="form-control" id="rentalRate">
+                            <label class="form-label">Billing Cycle</label>
+                            <select class="form-select" id="rentalBillingCycle" onchange="updateRateFields()">
+                                <option value="hourly">Hourly</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly" selected>Monthly</option>
+                            </select>
+                        </div>
+                        <div class="mb-3" id="rateHourlyDiv">
+                            <label class="form-label">Rate per Hour (VND)</label>
+                            <input type="number" step="1000" class="form-control" id="rentalRateHourly" placeholder="e.g. 10000">
+                            <small class="text-muted">Suggested: 10,000 VND/hr</small>
+                        </div>
+                        <div class="mb-3" id="rateWeeklyDiv" style="display:none;">
+                            <label class="form-label">Rate per Week (VND)</label>
+                            <input type="number" step="10000" class="form-control" id="rentalRateWeekly" placeholder="e.g. 250000">
+                            <small class="text-muted">Suggested: 250,000 VND/week (~30% off hourly)</small>
+                        </div>
+                        <div class="mb-3" id="rateMonthlyDiv" style="display:none;">
+                            <label class="form-label">Rate per Month (VND)</label>
+                            <input type="number" step="50000" class="form-control" id="rentalRateMonthly" placeholder="e.g. 700000">
+                            <small class="text-muted">Suggested: 700,000 VND/month (~50% off hourly)</small>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Notes</label>
@@ -1081,19 +1100,29 @@ def get_dashboard_html() -> str:
             }
         }
         
+        function updateRateFields() {
+            const cycle = document.getElementById('rentalBillingCycle').value;
+            document.getElementById('rateHourlyDiv').style.display = cycle === 'hourly' ? 'block' : 'none';
+            document.getElementById('rateWeeklyDiv').style.display = cycle === 'weekly' ? 'block' : 'none';
+            document.getElementById('rateMonthlyDiv').style.display = cycle === 'monthly' ? 'block' : 'none';
+        }
+        
         async function saveRental() {
             const id = document.getElementById('rentalId').value;
             const year = document.getElementById('rentalStartYear').value;
             const month = document.getElementById('rentalStartMonth').value;
+            const billingCycle = document.getElementById('rentalBillingCycle').value;
             
             const data = {
                 vm_id: document.getElementById('rentalVmId').value,
                 customer_name: document.getElementById('rentalCustomer').value || null,
                 customer_email: document.getElementById('rentalEmail').value || null,
                 rental_start: `${year}-${month.padStart(2, '0')}-01T00:00:00`,
-                rate_per_hour: parseFloat(document.getElementById('rentalRate').value) || null,
-                notes: document.getElementById('rentalNotes').value || null,
-                billing_cycle: 'monthly'
+                billing_cycle: billingCycle,
+                rate_per_hour: parseFloat(document.getElementById('rentalRateHourly').value) || null,
+                rate_per_week: parseFloat(document.getElementById('rentalRateWeekly').value) || null,
+                rate_per_month: parseFloat(document.getElementById('rentalRateMonthly').value) || null,
+                notes: document.getElementById('rentalNotes').value || null
             };
             
             try {
@@ -1126,13 +1155,17 @@ def get_dashboard_html() -> str:
             document.getElementById('rentalVmId').value = rental.vm_id;
             document.getElementById('rentalCustomer').value = rental.customer_name || '';
             document.getElementById('rentalEmail').value = rental.customer_email || '';
-            document.getElementById('rentalRate').value = rental.rate_per_hour || '';
+            document.getElementById('rentalBillingCycle').value = rental.billing_cycle || 'monthly';
+            document.getElementById('rentalRateHourly').value = rental.rate_per_hour || '';
+            document.getElementById('rentalRateWeekly').value = rental.rate_per_week || '';
+            document.getElementById('rentalRateMonthly').value = rental.rate_per_month || '';
             document.getElementById('rentalNotes').value = rental.notes || '';
             
             const startDate = new Date(rental.rental_start);
             document.getElementById('rentalStartYear').value = startDate.getFullYear();
             document.getElementById('rentalStartMonth').value = startDate.getMonth() + 1;
             
+            updateRateFields();
             new bootstrap.Modal(document.getElementById('rentalModal')).show();
         }
         

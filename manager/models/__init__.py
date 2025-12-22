@@ -6,7 +6,7 @@ from .database import (
 )
 from .schemas import (
     VMSessionCreate, VMSessionResponse, VMSessionList,
-    RentalCreate, RentalUpdate, RentalResponse,
+    RentalCreate, RentalUpdate, RentalResponse, BillingCycle,
     UsageReport, VMUsage, SyncResponse,
     NodeRegisterRequest, NodeRegisterResponse,
     EventIngestRequest, EventIngestResponse, EventData,

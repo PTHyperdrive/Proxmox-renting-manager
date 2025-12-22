@@ -190,6 +190,15 @@ class VMSessionList(BaseModel):
 # Rental Schemas
 # ============================================
 
+from enum import Enum
+
+class BillingCycle(str, Enum):
+    """Billing cycle options for rentals"""
+    HOURLY = "hourly"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+
 class RentalBase(BaseModel):
     """Base schema for rental"""
     vm_id: str
@@ -198,8 +207,13 @@ class RentalBase(BaseModel):
     customer_email: Optional[str] = None
     rental_start: datetime
     rental_end: Optional[datetime] = None
-    billing_cycle: str = "monthly"
-    rate_per_hour: Optional[float] = None
+    billing_cycle: BillingCycle = BillingCycle.MONTHLY
+    
+    # Pricing - set based on billing cycle
+    rate_per_hour: Optional[float] = None      # For hourly billing
+    rate_per_week: Optional[float] = None      # For weekly billing  
+    rate_per_month: Optional[float] = None     # For monthly billing
+    
     notes: Optional[str] = None
 
 
@@ -214,8 +228,10 @@ class RentalUpdate(BaseModel):
     customer_email: Optional[str] = None
     rental_start: Optional[datetime] = None
     rental_end: Optional[datetime] = None
-    billing_cycle: Optional[str] = None
+    billing_cycle: Optional[BillingCycle] = None
     rate_per_hour: Optional[float] = None
+    rate_per_week: Optional[float] = None
+    rate_per_month: Optional[float] = None
     is_active: Optional[bool] = None
     notes: Optional[str] = None
 

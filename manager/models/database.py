@@ -140,8 +140,10 @@ class Rental(Base):
     rental_end = Column(DateTime, nullable=True)
     
     # Billing configuration
-    billing_cycle = Column(String(20), default="monthly")
-    rate_per_hour = Column(Float, nullable=True)
+    billing_cycle = Column(String(20), default="monthly")  # hourly, weekly, monthly
+    rate_per_hour = Column(Float, nullable=True)   # VND/hour for hourly billing
+    rate_per_week = Column(Float, nullable=True)   # VND/week for weekly billing
+    rate_per_month = Column(Float, nullable=True)  # VND/month for monthly billing
     
     # Status
     is_active = Column(Boolean, default=True)
@@ -155,10 +157,22 @@ class Rental(Base):
     
     __table_args__ = (
         Index('idx_rental_active', 'vm_id', 'is_active'),
+        Index('idx_rental_customer', 'customer_name'),
     )
     
+    def get_rate(self) -> tuple:
+        """Get the applicable rate based on billing cycle.
+        Returns: (rate_value, rate_unit)
+        """
+        if self.billing_cycle == "hourly":
+            return (self.rate_per_hour or 0, "hour")
+        elif self.billing_cycle == "weekly":
+            return (self.rate_per_week or 0, "week")
+        else:  # monthly
+            return (self.rate_per_month or 0, "month")
+    
     def __repr__(self):
-        return f"<Rental(vm_id={self.vm_id}, customer={self.customer_name})>"
+        return f"<Rental(vm_id={self.vm_id}, customer={self.customer_name}, cycle={self.billing_cycle})>"
 
 
 class UsageSummary(Base):
