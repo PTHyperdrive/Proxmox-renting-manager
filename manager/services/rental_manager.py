@@ -331,20 +331,78 @@ class RentalManager:
             total_hours = usage.total_seconds / 3600
             total_days = usage.total_seconds / 86400
             total_weeks = total_days / 7
-            total_months = total_days / 30  # Approximate
+            
+            # Monthly cap threshold: 720 hours = 30 days
+            MONTHLY_HOURS_CAP = 720
+            used_monthly_cap = False
             
             if billing_cycle == "hourly" and rental.rate_per_hour:
-                rental_cost = total_hours * rental.rate_per_hour
+                # Calculate hourly cost
+                hourly_cost = total_hours * rental.rate_per_hour
+                
+                # If monthly rate is set and runtime >= 1 month, use monthly rate
+                if rental.rate_per_month and total_hours >= MONTHLY_HOURS_CAP:
+                    # Calculate how many complete months
+                    complete_months = int(total_hours // MONTHLY_HOURS_CAP)
+                    remaining_hours = total_hours % MONTHLY_HOURS_CAP
+                    
+                    monthly_cost = (complete_months * rental.rate_per_month) + (remaining_hours * rental.rate_per_hour)
+                    
+                    # Use the cheaper option
+                    if monthly_cost < hourly_cost:
+                        rental_cost = monthly_cost
+                        used_monthly_cap = True
+                    else:
+                        rental_cost = hourly_cost
+                else:
+                    rental_cost = hourly_cost
+                    
             elif billing_cycle == "weekly" and rental.rate_per_week:
-                rental_cost = total_weeks * rental.rate_per_week
+                # Calculate weekly cost
+                weekly_cost = total_weeks * rental.rate_per_week
+                
+                # If monthly rate is set and runtime >= 4 weeks (1 month), use monthly rate
+                if rental.rate_per_month and total_weeks >= 4:
+                    # Calculate how many complete months (4 weeks each)
+                    complete_months = int(total_weeks // 4)
+                    remaining_weeks = total_weeks % 4
+                    
+                    monthly_cost = (complete_months * rental.rate_per_month) + (remaining_weeks * rental.rate_per_week)
+                    
+                    # Use the cheaper option
+                    if monthly_cost < weekly_cost:
+                        rental_cost = monthly_cost
+                        used_monthly_cap = True
+                    else:
+                        rental_cost = weekly_cost
+                else:
+                    rental_cost = weekly_cost
+                    
             elif billing_cycle == "monthly" and rental.rate_per_month:
+                # Monthly billing: charge per 30 days of usage
+                total_months = total_days / 30
                 rental_cost = total_months * rental.rate_per_month
-            elif rental.rate_per_hour:
-                # Fallback to hourly if set
-                rental_cost = total_hours * rental.rate_per_hour
+                
+            else:
+                # Fallback: try any available rate
+                if rental.rate_per_month:
+                    total_months = total_days / 30
+                    rental_cost = total_months * rental.rate_per_month
+                elif rental.rate_per_week:
+                    rental_cost = total_weeks * rental.rate_per_week
+                elif rental.rate_per_hour:
+                    rental_cost = total_hours * rental.rate_per_hour
             
             # Get the rate for display
-            rate_value, rate_unit = rental.get_rate() if hasattr(rental, 'get_rate') else (rental.rate_per_hour or 0, "hour")
+            if billing_cycle == "hourly":
+                rate_value = rental.rate_per_hour or 0
+                rate_unit = "hour"
+            elif billing_cycle == "weekly":
+                rate_value = rental.rate_per_week or 0
+                rate_unit = "week"
+            else:  # monthly
+                rate_value = rental.rate_per_month or 0
+                rate_unit = "month"
             
             # Add rental details
             customers[customer_key]["rentals"].append({
@@ -357,6 +415,7 @@ class RentalManager:
                 "rate": rate_value,
                 "rate_unit": rate_unit,
                 "cost": round(rental_cost, 2),
+                "used_monthly_cap": used_monthly_cap,
                 "rental_start": rental.rental_start.isoformat() if rental.rental_start else None,
                 "rental_end": rental.rental_end.isoformat() if rental.rental_end else None
             })
@@ -398,4 +457,30 @@ class RentalManager:
             "customers": customer_list,
             "totals": grand_totals
         }
+    
+    async def delete_customer(self, customer_name: str) -> dict:
+        """
+        Delete all rentals for a customer.
+        
+        Args:
+            customer_name: Name of the customer
+            
+        Returns:
+            dict with deleted count and success status
+        """
+        from sqlalchemy import delete
+        
+        async with get_db_context() as db:
+            # Delete all rentals for this customer
+            query = delete(Rental).where(Rental.customer_name == customer_name)
+            result = await db.execute(query)
+            deleted_count = result.rowcount
+            
+            logger.info(f"Deleted {deleted_count} rentals for customer '{customer_name}'")
+            
+            return {
+                "success": True,
+                "message": f"Deleted {deleted_count} rentals for customer '{customer_name}'",
+                "deleted": deleted_count
+            }
 

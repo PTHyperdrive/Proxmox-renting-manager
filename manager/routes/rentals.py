@@ -145,9 +145,25 @@ async def get_customer_summary():
         - total_vms: Number of VMs rented
         - total_runtime_seconds: Total runtime across all VMs
         - total_runtime_formatted: Human readable total runtime
-        - total_cost: Calculated cost based on rate_per_hour
+        - total_cost: Calculated cost based on billing cycle rates
         - rentals: List of their rentals with individual stats
     """
     summary = await rental_manager.get_customer_summary()
     return summary
+
+
+@router.delete("/customers/{customer_name}")
+async def delete_customer(customer_name: str):
+    """
+    Delete all rentals for a customer.
+    
+    Args:
+        customer_name: Name of the customer to remove
+    """
+    result = await rental_manager.delete_customer(customer_name)
+    
+    if result['deleted'] == 0:
+        raise HTTPException(status_code=404, detail=f"Customer '{customer_name}' not found")
+    
+    return result
 

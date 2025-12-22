@@ -700,7 +700,7 @@ def get_dashboard_html() -> str:
                                 <option value="monthly" selected>Monthly</option>
                             </select>
                         </div>
-                        <div class="mb-3" id="rateHourlyDiv">
+                        <div class="mb-3" id="rateHourlyDiv" style="display:none;">
                             <label class="form-label">Rate per Hour (VND)</label>
                             <input type="number" step="1000" class="form-control" id="rentalRateHourly" placeholder="e.g. 10000">
                             <small class="text-muted">Suggested: 10,000 VND/hr</small>
@@ -710,7 +710,7 @@ def get_dashboard_html() -> str:
                             <input type="number" step="10000" class="form-control" id="rentalRateWeekly" placeholder="e.g. 250000">
                             <small class="text-muted">Suggested: 250,000 VND/week (~30% off hourly)</small>
                         </div>
-                        <div class="mb-3" id="rateMonthlyDiv" style="display:none;">
+                        <div class="mb-3" id="rateMonthlyDiv">
                             <label class="form-label">Rate per Month (VND)</label>
                             <input type="number" step="50000" class="form-control" id="rentalRateMonthly" placeholder="e.g. 700000">
                             <small class="text-muted">Suggested: 700,000 VND/month (~50% off hourly)</small>
@@ -1332,14 +1332,43 @@ def get_dashboard_html() -> str:
                     <td>${customer.customer_email || '-'}</td>
                     <td><span class="badge bg-primary">${customer.total_vms} VMs</span></td>
                     <td class="duration-display">${customer.total_runtime_formatted}</td>
-                    <td><strong class="text-success">$${customer.total_cost.toFixed(2)}</strong></td>
+                    <td><strong class="text-success">${formatVND(customer.total_cost)}</strong></td>
                     <td>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="viewCustomerDetails('${customer.customer_name}')">
-                            <i class="bi bi-eye"></i> Details
+                        <button class="btn btn-sm btn-outline-secondary me-1" onclick="viewCustomerDetails('${customer.customer_name}')">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteCustomer('${customer.customer_name}')" title="Delete customer">
+                            <i class="bi bi-trash"></i>
                         </button>
                     </td>
                 </tr>
             `).join('');
+        }
+        
+        function formatVND(amount) {
+            return new Intl.NumberFormat('vi-VN').format(amount) + ' VND';
+        }
+        
+        async function deleteCustomer(customerName) {
+            if (!confirm(`Delete customer "${customerName}"?\n\nThis will delete ALL rentals for this customer.\nThis action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/rentals/customers/${encodeURIComponent(customerName)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    await loadCustomers();
+                } else {
+                    const error = await response.json();
+                    alert('Failed to delete customer: ' + (error.detail || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Failed to delete customer:', err);
+                alert('Failed to delete customer');
+            }
         }
         
         function updateCustomerSummary() {
@@ -1347,7 +1376,7 @@ def get_dashboard_html() -> str:
             document.getElementById('totalCustomers').textContent = totals.total_customers || 0;
             document.getElementById('totalRentedVMs').textContent = totals.total_vms || 0;
             document.getElementById('totalBilledRuntime').textContent = totals.total_runtime_formatted || '0h';
-            document.getElementById('totalRevenue').textContent = '$' + (totals.total_cost || 0).toFixed(2);
+            document.getElementById('totalRevenue').textContent = formatVND(totals.total_cost || 0);
         }
         
         function viewCustomerDetails(customerName) {
@@ -1357,15 +1386,20 @@ def get_dashboard_html() -> str:
             const modalBody = document.getElementById('usageModalBody');
             const modal = new bootstrap.Modal(document.getElementById('usageModal'));
             
-            let rentalsHtml = customer.rentals.map(r => `
-                <tr>
-                    <td>VM ${r.vm_id}</td>
-                    <td>${r.node || '-'}</td>
-                    <td>${r.runtime_formatted}</td>
-                    <td>$${r.rate_per_hour || 0}/hr</td>
-                    <td class="text-success"><strong>$${r.cost.toFixed(2)}</strong></td>
-                </tr>
-            `).join('');
+            let rentalsHtml = customer.rentals.map(r => {
+                const rateDisplay = r.rate ? `${formatVND(r.rate)}/${r.rate_unit || 'month'}` : '-';
+                const cycleDisplay = r.billing_cycle ? `<span class="badge bg-secondary">${r.billing_cycle}</span>` : '';
+                const capBadge = r.used_monthly_cap ? `<span class="badge bg-info ms-1" title="Monthly cap applied">capped</span>` : '';
+                return `
+                    <tr>
+                        <td>VM ${r.vm_id} ${cycleDisplay}${capBadge}</td>
+                        <td>${r.node || '-'}</td>
+                        <td>${r.runtime_formatted}</td>
+                        <td>${rateDisplay}</td>
+                        <td class="text-success"><strong>${formatVND(r.cost)}</strong></td>
+                    </tr>
+                `;
+            }).join('');
             
             modalBody.innerHTML = `
                 <div class="mb-3">
@@ -1387,7 +1421,7 @@ def get_dashboard_html() -> str:
                     </div>
                     <div class="col-md-4">
                         <div class="p-3 bg-success text-white rounded text-center">
-                            <div class="h4 mb-0">$${customer.total_cost.toFixed(2)}</div>
+                            <div class="h5 mb-0">${formatVND(customer.total_cost)}</div>
                             <small>Total Cost</small>
                         </div>
                     </div>
@@ -1407,7 +1441,7 @@ def get_dashboard_html() -> str:
                     <tfoot class="table-light">
                         <tr>
                             <th colspan="4">Total</th>
-                            <th class="text-success">$${customer.total_cost.toFixed(2)}</th>
+                            <th class="text-success">${formatVND(customer.total_cost)}</th>
                         </tr>
                     </tfoot>
                 </table>
