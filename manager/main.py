@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .models.database import init_db, ProxmoxNode, get_db_context
-from .routes import vms_router, sessions_router, rentals_router, ingest_router, nodes_router
+from .routes import vms_router, sessions_router, rentals_router, ingest_router, nodes_router, pricing_router
 
 # Configure logging
 logging.basicConfig(
@@ -71,6 +71,7 @@ app.include_router(nodes_router)   # Node management
 app.include_router(vms_router)
 app.include_router(sessions_router)
 app.include_router(rentals_router)
+app.include_router(pricing_router)  # Pricing calculator
 
 
 # Health check endpoint
@@ -479,6 +480,11 @@ def get_dashboard_html() -> str:
                     <i class="bi bi-people me-1"></i> Customers
                 </button>
             </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pricingTab">
+                    <i class="bi bi-calculator me-1"></i> Pricing
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content">
@@ -639,6 +645,145 @@ def get_dashboard_html() -> str:
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Pricing Tab -->
+            <div class="tab-pane fade" id="pricingTab">
+                <div class="row g-4">
+                    <!-- Pricing Tiers Card -->
+                    <div class="col-lg-6">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-layers me-2"></i>Pricing Tiers</span>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="loadPricingTiers()">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#tierModal">
+                                        <i class="bi bi-plus"></i> Add Tier
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Tier</th>
+                                                <th>vCPU</th>
+                                                <th>RAM</th>
+                                                <th>Storage</th>
+                                                <th>Rate/Hour</th>
+                                                <th>Rate/Month</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="pricingTiersTableBody">
+                                            <tr>
+                                                <td colspan="7" class="text-center py-4 text-muted">Loading...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- GPU Resources Card -->
+                    <div class="col-lg-6">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-gpu-card me-2"></i>GPU Resources</span>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="loadGPUResources()">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#gpuModal">
+                                        <i class="bi bi-plus"></i> Add GPU
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>GPU</th>
+                                                <th>VRAM</th>
+                                                <th>Rate/Hour</th>
+                                                <th>Workloads</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="gpuResourcesTableBody">
+                                            <tr>
+                                                <td colspan="5" class="text-center py-4 text-muted">Loading...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Pricing Calculator Card -->
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-calculator me-2"></i>Pricing Calculator
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-4">
+                                    <div class="col-md-4">
+                                        <h6 class="text-muted mb-3">VM Configuration</h6>
+                                        <div class="mb-3">
+                                            <label class="form-label">vCPU</label>
+                                            <input type="number" class="form-control" id="calcVcpu" value="4" min="1" max="64">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">RAM (GB)</label>
+                                            <input type="number" class="form-control" id="calcRam" value="16" min="1" max="512">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">NVMe Storage (GB)</label>
+                                            <input type="number" class="form-control" id="calcNvme" value="100" min="0" max="2048">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">GPU (Optional)</label>
+                                            <select class="form-select" id="calcGpu">
+                                                <option value="">No GPU</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">Profit Margin: <span id="marginValue">30</span>%</label>
+                                            <input type="range" class="form-range" id="calcMargin" min="0" max="100" value="30" oninput="document.getElementById('marginValue').textContent = this.value">
+                                        </div>
+                                        <button class="btn btn-primary w-100" onclick="calculatePricing()">
+                                            <i class="bi bi-calculator me-2"></i>Calculate
+                                        </button>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <h6 class="text-muted mb-3">Cost Breakdown</h6>
+                                        <div id="pricingResult" class="p-3 rounded" style="background: var(--stat-card-bg); min-height: 300px;">
+                                            <div class="text-center py-5 text-muted">
+                                                <i class="bi bi-calculator fs-1 mb-3 d-block"></i>
+                                                Configure VM specs and click Calculate
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Seed Data Button -->
+                    <div class="col-12">
+                        <button class="btn btn-outline-secondary" onclick="seedPricingData()">
+                            <i class="bi bi-database-add me-2"></i>Seed Default Pricing Data
+                        </button>
+                        <small class="text-muted ms-2">Click to populate default tiers, GPUs, and electricity rates</small>
                     </div>
                 </div>
             </div>
@@ -1453,6 +1598,209 @@ def get_dashboard_html() -> str:
         
         // Load customers when tab is clicked
         document.querySelector('button[data-bs-target="#customersTab"]')?.addEventListener('shown.bs.tab', loadCustomers);
+        
+        // ============================================
+        // PRICING TAB FUNCTIONS
+        // ============================================
+        
+        let pricingTiers = [];
+        let gpuResources = [];
+        
+        async function loadPricingTiers() {
+            try {
+                const response = await fetch(`${API_BASE}/api/pricing/tiers`);
+                pricingTiers = await response.json();
+                
+                const tbody = document.getElementById('pricingTiersTableBody');
+                if (pricingTiers.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted">
+                        No pricing tiers. Click "Seed Default Pricing Data" to get started.
+                    </td></tr>`;
+                    return;
+                }
+                
+                tbody.innerHTML = pricingTiers.map(tier => `
+                    <tr>
+                        <td><strong>${tier.name}</strong><br><small class="text-muted">${tier.target_market || ''}</small></td>
+                        <td>${tier.vcpu_min}-${tier.vcpu_max}</td>
+                        <td>${tier.ram_min_gb}-${tier.ram_max_gb}GB</td>
+                        <td>${tier.nvme_gb}GB NVMe</td>
+                        <td>${formatVND(tier.rate_per_hour)}</td>
+                        <td>${formatVND(tier.rate_per_month)}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deletePricingTier(${tier.id})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load pricing tiers:', err);
+            }
+        }
+        
+        async function loadGPUResources() {
+            try {
+                const response = await fetch(`${API_BASE}/api/pricing/gpus`);
+                gpuResources = await response.json();
+                
+                const tbody = document.getElementById('gpuResourcesTableBody');
+                const gpuSelect = document.getElementById('calcGpu');
+                
+                if (gpuResources.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">
+                        No GPU resources. Click "Seed Default Pricing Data" to get started.
+                    </td></tr>`;
+                    return;
+                }
+                
+                tbody.innerHTML = gpuResources.map(gpu => `
+                    <tr>
+                        <td><strong>${gpu.name}</strong><br><small class="text-muted">${gpu.model || ''}</small></td>
+                        <td>${gpu.vram_gb}GB</td>
+                        <td>${formatVND(gpu.rate_per_hour)}</td>
+                        <td><small>${gpu.target_workloads || '-'}</small></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteGPUResource(${gpu.id})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+                
+                // Update GPU select in calculator
+                gpuSelect.innerHTML = `<option value="">No GPU</option>` + 
+                    gpuResources.map(gpu => `<option value="${gpu.id}">${gpu.name} (${gpu.vram_gb}GB) - ${formatVND(gpu.rate_per_hour)}/h</option>`).join('');
+            } catch (err) {
+                console.error('Failed to load GPU resources:', err);
+            }
+        }
+        
+        async function calculatePricing() {
+            const resultDiv = document.getElementById('pricingResult');
+            resultDiv.innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
+            
+            try {
+                const request = {
+                    vcpu: parseInt(document.getElementById('calcVcpu').value),
+                    ram_gb: parseInt(document.getElementById('calcRam').value),
+                    nvme_gb: parseInt(document.getElementById('calcNvme').value),
+                    gpu_id: document.getElementById('calcGpu').value || null,
+                    profit_margin_percent: parseFloat(document.getElementById('calcMargin').value)
+                };
+                
+                const response = await fetch(`${API_BASE}/api/pricing/calculate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(request)
+                });
+                
+                if (!response.ok) throw new Error('Calculation failed');
+                const result = await response.json();
+                const b = result.breakdown;
+                
+                resultDiv.innerHTML = `
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="p-3 rounded mb-3" style="background: rgba(var(--bs-primary-rgb), 0.1);">
+                                <h5 class="mb-3"><i class="bi bi-cash-stack me-2"></i>Recommended Pricing</h5>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Per Hour:</span>
+                                    <strong class="text-primary">${formatVND(b.total_price_per_hour)}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Per Day:</span>
+                                    <strong class="text-primary">${formatVND(b.total_price_per_day)}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Per Month:</span>
+                                    <strong class="text-primary fs-5">${formatVND(b.total_price_per_month)}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="p-3 rounded" style="background: rgba(var(--bs-warning-rgb), 0.1);">
+                                <h6 class="mb-3"><i class="bi bi-pie-chart me-2"></i>Cost Breakdown (per hour)</h6>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Hardware:</span>
+                                    <span>${formatVND(b.hardware_cost_per_hour)}</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Electricity:</span>
+                                    <span>${formatVND(b.electricity_cost_per_hour)}</span>
+                                </div>
+                                ${b.gpu_cost_per_hour > 0 ? `
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>GPU:</span>
+                                    <span>${formatVND(b.gpu_cost_per_hour)}</span>
+                                </div>
+                                ` : ''}
+                                <hr>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Base Cost:</span>
+                                    <span>${formatVND(b.base_cost_per_hour)}</span>
+                                </div>
+                                <div class="d-flex justify-content-between text-success">
+                                    <span>Profit (${b.profit_margin_applied}%):</span>
+                                    <span>+${formatVND(b.profit_per_hour)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Hardware pool: ${result.hardware_pool} | ${result.electricity_tier_info}
+                            </small>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="text-center py-5 text-danger">
+                    <i class="bi bi-exclamation-triangle fs-1 mb-3 d-block"></i>
+                    Failed to calculate. Make sure pricing data is seeded.
+                </div>`;
+            }
+        }
+        
+        async function seedPricingData() {
+            if (!confirm('This will seed default pricing tiers, GPU resources, and electricity rates. Continue?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/pricing/seed`, { method: 'POST' });
+                const result = await response.json();
+                alert(`Seeded: ${result.data.pricing_tiers} tiers, ${result.data.gpu_resources} GPUs, ${result.data.electricity_tiers} electricity tiers`);
+                loadPricingTiers();
+                loadGPUResources();
+            } catch (err) {
+                alert('Failed to seed data: ' + err.message);
+            }
+        }
+        
+        async function deletePricingTier(id) {
+            if (!confirm('Delete this pricing tier?')) return;
+            try {
+                await fetch(`${API_BASE}/api/pricing/tiers/${id}`, { method: 'DELETE' });
+                loadPricingTiers();
+            } catch (err) {
+                alert('Failed to delete tier');
+            }
+        }
+        
+        async function deleteGPUResource(id) {
+            if (!confirm('Delete this GPU resource?')) return;
+            try {
+                await fetch(`${API_BASE}/api/pricing/gpus/${id}`, { method: 'DELETE' });
+                loadGPUResources();
+            } catch (err) {
+                alert('Failed to delete GPU');
+            }
+        }
+        
+        // Load pricing data when tab is clicked
+        document.querySelector('button[data-bs-target="#pricingTab"]')?.addEventListener('shown.bs.tab', () => {
+            loadPricingTiers();
+            loadGPUResources();
+        });
     </script>
     
     <style>

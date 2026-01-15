@@ -359,3 +359,206 @@ class HealthStatus(BaseModel):
     database: str = "connected"
     nodes_active: int = 0
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ============================================
+# Pricing Schemas
+# ============================================
+
+class ElectricityTierBase(BaseModel):
+    """Base schema for electricity tier"""
+    tier_number: int = Field(..., ge=1, le=6, description="Tier number (1-6)")
+    min_kwh: int = Field(..., ge=0, description="Minimum kWh for this tier")
+    max_kwh: Optional[int] = Field(None, description="Maximum kWh (None for unlimited)")
+    rate_per_kwh: float = Field(..., gt=0, description="Rate in VND per kWh")
+
+
+class ElectricityTierResponse(ElectricityTierBase):
+    """Response schema for electricity tier"""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+
+
+class HardwarePoolBase(BaseModel):
+    """Base schema for hardware pool"""
+    name: str = Field(..., description="Pool name (e.g., 'StormWorking')")
+    total_cores: int = Field(..., gt=0, description="Total physical cores")
+    total_threads: int = Field(..., gt=0, description="Total logical threads")
+    cpu_model: Optional[str] = Field(None, description="CPU model description")
+    total_ram_gb: int = Field(..., gt=0, description="Total RAM in GB")
+    ram_type: Optional[str] = Field(None, description="RAM type (e.g., 'DDR4 ECC')")
+    nvme_gb: int = Field(0, ge=0, description="NVMe storage in GB")
+    ssd_gb: int = Field(0, ge=0, description="SATA SSD storage in GB")
+    hdd_gb: int = Field(0, ge=0, description="HDD storage in GB")
+    backup_gb: int = Field(0, ge=0, description="Backup storage in GB")
+    monthly_depreciation_vnd: float = Field(0, ge=0, description="Monthly hardware depreciation cost")
+    average_watts: int = Field(500, gt=0, description="Average power consumption in watts")
+
+
+class HardwarePoolCreate(HardwarePoolBase):
+    """Schema for creating hardware pool"""
+    pass
+
+
+class HardwarePoolResponse(HardwarePoolBase):
+    """Response schema for hardware pool"""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
+class PricingTierBase(BaseModel):
+    """Base schema for pricing tier"""
+    name: str = Field(..., description="Tier name (Basic, Intermediate, Advanced)")
+    description: Optional[str] = None
+    vcpu_min: int = Field(..., ge=1, description="Minimum vCPU allocation")
+    vcpu_max: int = Field(..., ge=1, description="Maximum vCPU allocation")
+    ram_min_gb: int = Field(..., ge=1, description="Minimum RAM in GB")
+    ram_max_gb: int = Field(..., ge=1, description="Maximum RAM in GB")
+    nvme_gb: int = Field(0, ge=0, description="NVMe storage in GB")
+    ssd_gb: int = Field(0, ge=0, description="SATA SSD storage in GB")
+    hdd_gb: int = Field(0, ge=0, description="HDD storage in GB")
+    backup_included: bool = Field(True, description="Whether backup is included")
+    rate_per_hour: float = Field(..., gt=0, description="Hourly rate in VND")
+    rate_per_day: Optional[float] = Field(None, description="Daily rate in VND")
+    rate_per_month: float = Field(..., gt=0, description="Monthly rate in VND")
+    target_market: Optional[str] = Field(None, description="Target market description")
+
+
+class PricingTierCreate(PricingTierBase):
+    """Schema for creating pricing tier"""
+    pass
+
+
+class PricingTierUpdate(BaseModel):
+    """Schema for updating pricing tier"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    vcpu_min: Optional[int] = Field(None, ge=1)
+    vcpu_max: Optional[int] = Field(None, ge=1)
+    ram_min_gb: Optional[int] = Field(None, ge=1)
+    ram_max_gb: Optional[int] = Field(None, ge=1)
+    nvme_gb: Optional[int] = Field(None, ge=0)
+    ssd_gb: Optional[int] = Field(None, ge=0)
+    hdd_gb: Optional[int] = Field(None, ge=0)
+    backup_included: Optional[bool] = None
+    rate_per_hour: Optional[float] = Field(None, gt=0)
+    rate_per_day: Optional[float] = None
+    rate_per_month: Optional[float] = Field(None, gt=0)
+    target_market: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class PricingTierResponse(PricingTierBase):
+    """Response schema for pricing tier"""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    is_active: bool = True
+    display_order: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class GPUResourceBase(BaseModel):
+    """Base schema for GPU resource"""
+    name: str = Field(..., description="GPU name (e.g., 'RTX 2060')")
+    model: Optional[str] = Field(None, description="Full model name")
+    vram_gb: int = Field(..., gt=0, description="VRAM in GB")
+    cuda_cores: Optional[int] = Field(None, description="Number of CUDA cores")
+    tensor_cores: Optional[int] = Field(None, description="Number of Tensor cores")
+    power_watts: int = Field(200, gt=0, description="TDP in watts")
+    rate_per_hour: float = Field(..., gt=0, description="Hourly rate in VND")
+    rate_per_day: Optional[float] = Field(None, description="Daily rate in VND")
+    rate_per_month: Optional[float] = Field(None, description="Monthly rate in VND")
+    total_count: int = Field(1, ge=1, description="Total units available")
+    target_workloads: Optional[str] = Field(None, description="Target workloads description")
+
+
+class GPUResourceCreate(GPUResourceBase):
+    """Schema for creating GPU resource"""
+    pass
+
+
+class GPUResourceUpdate(BaseModel):
+    """Schema for updating GPU resource"""
+    name: Optional[str] = None
+    model: Optional[str] = None
+    vram_gb: Optional[int] = Field(None, gt=0)
+    cuda_cores: Optional[int] = None
+    tensor_cores: Optional[int] = None
+    power_watts: Optional[int] = Field(None, gt=0)
+    rate_per_hour: Optional[float] = Field(None, gt=0)
+    rate_per_day: Optional[float] = None
+    rate_per_month: Optional[float] = None
+    total_count: Optional[int] = Field(None, ge=1)
+    available_count: Optional[int] = Field(None, ge=0)
+    is_available: Optional[bool] = None
+    target_workloads: Optional[str] = None
+
+
+class GPUResourceResponse(GPUResourceBase):
+    """Response schema for GPU resource"""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    available_count: int = 1
+    is_available: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
+class PricingCalculateRequest(BaseModel):
+    """Request to calculate optimal pricing"""
+    vcpu: int = Field(..., ge=1, description="Number of vCPUs")
+    ram_gb: int = Field(..., ge=1, description="RAM in GB")
+    nvme_gb: int = Field(0, ge=0, description="NVMe storage in GB")
+    ssd_gb: int = Field(0, ge=0, description="SSD storage in GB")
+    hdd_gb: int = Field(0, ge=0, description="HDD storage in GB")
+    gpu_id: Optional[int] = Field(None, description="GPU resource ID if using GPU")
+    hours_per_day: float = Field(24, gt=0, le=24, description="Expected usage hours per day")
+    days_per_month: int = Field(30, ge=1, le=31, description="Expected usage days per month")
+    profit_margin_percent: float = Field(30, ge=0, le=100, description="Desired profit margin percentage")
+
+
+class PricingCostBreakdown(BaseModel):
+    """Breakdown of costs for pricing calculation"""
+    hardware_cost_per_hour: float = Field(..., description="Hardware depreciation cost per hour in VND")
+    electricity_cost_per_hour: float = Field(..., description="Electricity cost per hour in VND")
+    gpu_cost_per_hour: float = Field(0, description="GPU cost per hour in VND")
+    base_cost_per_hour: float = Field(..., description="Total base cost per hour in VND")
+    profit_per_hour: float = Field(..., description="Profit per hour in VND")
+    total_price_per_hour: float = Field(..., description="Recommended price per hour in VND")
+    total_price_per_day: float = Field(..., description="Recommended price per day in VND")
+    total_price_per_month: float = Field(..., description="Recommended price per month in VND")
+    profit_margin_applied: float = Field(..., description="Profit margin applied (percentage)")
+
+
+class PricingCalculateResponse(BaseModel):
+    """Response from pricing calculation"""
+    request: PricingCalculateRequest
+    breakdown: PricingCostBreakdown
+    hardware_pool: Optional[str] = Field(None, description="Hardware pool name used for calculation")
+    electricity_tier_info: str = Field("Vietnam tiered pricing", description="Electricity pricing structure used")
+
+
+class PricingRecommendation(BaseModel):
+    """Pricing recommendation for a tier"""
+    tier_name: str
+    vcpu_range: str
+    ram_range: str
+    storage_included: str
+    recommended_hourly_rate: float
+    recommended_monthly_rate: float
+    current_hourly_rate: Optional[float] = None
+    current_monthly_rate: Optional[float] = None
+    cost_analysis: PricingCostBreakdown
+
+
+class PricingRecommendationsResponse(BaseModel):
+    """Response with pricing recommendations for all tiers"""
+    recommendations: List[PricingRecommendation]
+    hardware_pool: str
+    profit_margin_used: float
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+

@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Float, Text, Index
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Float, Text, Index, ForeignKey
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -143,6 +143,11 @@ class Rental(Base):
     billing_cycle = Column(String(20), default="monthly")  # hourly, weekly, monthly
     rate_per_hour = Column(Float, nullable=True)   # VND/hour for hourly billing
     rate_per_week = Column(Float, nullable=True)   # VND/week for weekly billing
+    
+    # Pricing tier reference (for fixed tier pricing)
+    pricing_tier_id = Column(Integer, ForeignKey('pricing_tiers.id'), nullable=True)
+    gpu_resource_id = Column(Integer, ForeignKey('gpu_resources.id'), nullable=True)
+    is_custom_pricing = Column(Boolean, default=False)  # True if using custom rates instead of tier
     rate_per_month = Column(Float, nullable=True)  # VND/month for monthly billing
     
     # Status

@@ -4,6 +4,9 @@ from .database import (
     Base, VMSession, Rental, UsageSummary, ProxmoxNode, TrackedVM,
     get_db, get_db_context, init_db
 )
+from .pricing import (
+    ElectricityTier, HardwarePool, PricingTier, GPUResource
+)
 from .schemas import (
     VMSessionCreate, VMSessionResponse, VMSessionList,
     RentalCreate, RentalUpdate, RentalResponse, BillingCycle,
@@ -19,6 +22,7 @@ from .schemas import (
 
 __all__ = [
     "Base", "VMSession", "Rental", "UsageSummary", "ProxmoxNode", "TrackedVM",
+    "ElectricityTier", "HardwarePool", "PricingTier", "GPUResource",
     "get_db", "get_db_context", "init_db",
     "VMSessionCreate", "VMSessionResponse", "VMSessionList",
     "RentalCreate", "RentalUpdate", "RentalResponse",
@@ -31,3 +35,4 @@ __all__ = [
     "VMStateData", "VMStatesSnapshot", "VMStatesResponse",
     "ForceSyncRequest", "ForceSyncResponse"
 ]
+
